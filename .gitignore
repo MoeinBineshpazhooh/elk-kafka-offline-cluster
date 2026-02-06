@@ -1,0 +1,29 @@
+# Environment files
+env/*.env
+*.env.local
+*.env.prod
+
+# Data volumes
+/opt/elastic/
+/opt/kafka/
+
+# Docker
+*.tar
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+tmp/
