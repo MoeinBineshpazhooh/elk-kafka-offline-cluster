@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  kibana02:
+    image: elastic/kibana:9.2.4
+    container_name: kibana02
+    network_mode: host
+    restart: unless-stopped
+
+    env_file:
+      - ../env/kibana.env
+
+    environment:
+      SERVER_HOST: "${KIBANA_SERVER_HOST:-0.0.0.0}"
+      SERVER_PORT: "${KIBANA_SERVER_PORT:-5601}"
+      SERVER_SSL_ENABLED: "false"
+
+      ELASTICSEARCH_HOSTS: "${ELASTICSEARCH_HOSTS}"
+      ELASTICSEARCH_USERNAME: "${ELASTICSEARCH_USERNAME}"
+      ELASTICSEARCH_PASSWORD: "${ELASTICSEARCH_PASSWORD}"
+      ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES: "${ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES}"
+      ELASTICSEARCH_SSL_VERIFICATIONMODE: "${ELASTICSEARCH_SSL_VERIFICATIONMODE}"
+
+      XPACK_SECURITY_ENCRYPTIONKEY: "${XPACK_SECURITY_ENCRYPTIONKEY}"
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "${XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY}"
+      XPACK_REPORTING_ENCRYPTIONKEY: "${XPACK_REPORTING_ENCRYPTIONKEY}"
+
+    volumes:
+      - /opt/elastic/kibana02/certs/ca/ca.crt:/usr/share/kibana/config/certs/ca/ca.crt:ro
