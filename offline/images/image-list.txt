@@ -1,0 +1,18 @@
+# List of container images required for the ELK + Kafka offline cluster.
+# One image per line, in the form: image:tag
+
+# Elasticsearch
+elastic/elasticsearch:9.2.4
+
+# Kibana
+elastic/kibana:9.2.4
+
+# Logstash
+elastic/logstash:9.2.4
+
+# Kafka (KRaft)
+apache/kafka:latest
+
+# Kafka UIs
+tchiotludo/akhq:latest
+kafbat/kafka-ui:latest
