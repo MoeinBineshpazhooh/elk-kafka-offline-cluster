@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  logstash02:
+    image: elastic/logstash:9.2.4
+    container_name: logstash02
+    network_mode: host
+    restart: unless-stopped
+
+    env_file:
+      - ../env/logstash.env
+
+    environment:
+      LS_JAVA_OPTS: "${LS_JAVA_OPTS:- -Xms512m -Xmx512m}"
+
+    volumes:
+      - ./config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./config/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      - ./pipeline/kafka-to-elasticsearch.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+
+      - /opt/elastic/logstash02/certs/ca/ca.crt:/usr/share/logstash/config/certs/ca/ca.crt:ro
