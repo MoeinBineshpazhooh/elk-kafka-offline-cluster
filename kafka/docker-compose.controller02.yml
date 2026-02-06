@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  kafka-controller02:
+    image: apache/kafka:latest
+    container_name: kafka-controller02
+    network_mode: host
+    restart: unless-stopped
+
+    environment:
+      KAFKA_CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+
+    volumes:
+      - ./config/controller2.properties:/etc/kafka/controller.properties:ro
+      - /opt/kafka/controller/data:/var/lib/kafka/data
+
+    command: >
+      bash -lc "
+        if [ ! -f /var/lib/kafka/data/meta.properties ]; then
+          echo '[INFO] Formatting controller storage (first boot)...';
+          /opt/kafka/bin/kafka-storage.sh format -t ${KAFKA_CLUSTER_ID} -c /etc/kafka/controller.properties;
+        else
+          echo '[INFO] Storage already formatted.';
+        fi;
+        exec /opt/kafka/bin/kafka-server-start.sh /etc/kafka/controller.properties
+      "
