@@ -1,0 +1,85 @@
+# inventory/hosts.example.yml
+# Copy this file to: inventory/hosts.your-env.yml (this one is gitignored)
+# Update IPs/hostnames to match your real servers.
+
+global:
+  project_name: "elk-kafka-offline-cluster"
+  environment: "prod"
+  domain: "drp.local"
+  timezone: "Asia/Tehran"
+
+network:
+  management_cidr: "10.10.4.0/22"
+
+ports:
+  elasticsearch_http: 9200
+  elasticsearch_transport: 9300
+  kibana: 5601
+  logstash_http_api: 9600
+  kafka_broker: 9092
+  kafka_controller: 9093
+  akhq: 8080
+  kafka_ui: 8081
+
+nodes:
+  # --- Elasticsearch (Option B): all nodes master-eligible + data + ingest ---
+  es01:
+    ip: "10.10.4.101"
+    hostname: "es01.drp.local"
+    roles: ["master", "data", "ingest"]
+  es02:
+    ip: "10.10.4.102"
+    hostname: "es02.drp.local"
+    roles: ["master", "data", "ingest"]
+  es03:
+    ip: "10.10.4.103"
+    hostname: "es03.drp.local"
+    roles: ["master", "data", "ingest"]
+
+  # --- Kibana + Logstash nodes ---
+  kibana01:
+    ip: "10.10.4.111"
+    hostname: "kibana01.drp.local"
+    roles: ["kibana", "logstash"]
+  kibana02:
+    ip: "10.10.4.112"
+    hostname: "kibana02.drp.local"
+    roles: ["kibana", "logstash"]
+
+  # --- Kafka KRaft controllers (3-node quorum) ---
+  kafka-controller01:
+    ip: "10.10.4.121"
+    hostname: "kafka-controller01.drp.local"
+    roles: ["kafka_controller"]
+  kafka-controller02:
+    ip: "10.10.4.122"
+    hostname: "kafka-controller02.drp.local"
+    roles: ["kafka_controller"]
+  kafka-controller03:
+    ip: "10.10.4.123"
+    hostname: "kafka-controller03.drp.local"
+    roles: ["kafka_controller"]
+
+  # --- Kafka brokers (2 brokers) ---
+  kafka-broker01:
+    ip: "10.10.4.131"
+    hostname: "kafka-broker01.drp.local"
+    roles: ["kafka_broker"]
+  kafka-broker02:
+    ip: "10.10.4.132"
+    hostname: "kafka-broker02.drp.local"
+    roles: ["kafka_broker"]
+
+  # --- Optional UIs node (can be merged into kibana01) ---
+  ui01:
+    ip: "10.10.4.111"
+    hostname: "kibana01.drp.local"
+    roles: ["akhq", "kafka_ui"]
+
+groups:
+  elasticsearch: ["es01", "es02", "es03"]
+  kibana: ["kibana01", "kibana02"]
+  logstash: ["kibana01", "kibana02"]
+  kafka_controllers: ["kafka-controller01", "kafka-controller02", "kafka-controller03"]
+  kafka_brokers: ["kafka-broker01", "kafka-broker02"]
+  ui: ["ui01"]
