@@ -1,0 +1,25 @@
+cluster.name: drp-elk
+node.name: es03
+
+node.roles: [ master, data, ingest ]
+
+path.repo: ["/mnt/snapshots"]
+
+network.host: 10.10.4.103
+http.port: 9200
+transport.port: 9300
+
+discovery.seed_hosts: ["10.10.4.101:9300", "10.10.4.102:9300", "10.10.4.103:9300"]
+cluster.initial_master_nodes: ["es01", "es02", "es03"]
+
+xpack.security.enabled: true
+
+xpack.security.http.ssl:
+  enabled: true
+  keystore.path: certs/es03-http.p12
+
+xpack.security.transport.ssl:
+  enabled: true
+  verification_mode: certificate
+  keystore.path: certs/es03-transport.p12
+  truststore.path: certs/es03-transport.p12

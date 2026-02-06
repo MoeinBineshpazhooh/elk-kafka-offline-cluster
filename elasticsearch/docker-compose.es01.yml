@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  es01:
+    image: elastic/elasticsearch:9.2.4
+    container_name: es01
+    network_mode: host
+    restart: unless-stopped
+
+    environment:
+      # JVM sizing (adjust for your hosts)
+      ES_JAVA_OPTS: "-Xms2g -Xmx2g"
+
+      # Bootstrap password for built-in users (must be set on FIRST startup)
+      ELASTIC_PASSWORD: "${ELASTIC_PASSWORD}"
+
+      # Important for air-gapped logging clarity
+      cluster.name: "drp-elk"
+      node.name: "es01"
+
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+
+    volumes:
+      - /opt/elastic/es01/data:/usr/share/elasticsearch/data
+      - ./config/es01/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+      - /opt/elastic/es01/certs:/usr/share/elasticsearch/config/certs:ro
+      - /opt/elastic/snapshots:/mnt/snapshots
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -s https://127.0.0.1:9200/_cluster/health | grep -E 'green|yellow' >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
