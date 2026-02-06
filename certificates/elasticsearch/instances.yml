@@ -1,0 +1,30 @@
+# certificates/elasticsearch/instances.yml
+#
+# Input file for elasticsearch-certutil to generate node certificates.
+# Replace IPs and DNS names to match your real environment.
+#
+# NOTE:
+# - Include BOTH IPs and DNS names that clients will use.
+# - Add kibana/logstash hostnames only if you plan to terminate TLS there (not required).
+#
+instances:
+  - name: es01
+    dns:
+      - es01
+      - es01.drp.local
+    ip:
+      - 10.10.4.101
+
+  - name: es02
+    dns:
+      - es02
+      - es02.drp.local
+    ip:
+      - 10.10.4.102
+
+  - name: es03
+    dns:
+      - es03
+      - es03.drp.local
+    ip:
+      - 10.10.4.103
