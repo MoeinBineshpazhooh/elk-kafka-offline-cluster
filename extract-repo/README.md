@@ -23,8 +23,9 @@ Each archive is created with a prefix `elk-bundle/` so extraction results in:
 
 From repo root:
 
-```bash
+```
 bash extract-repo/build-bundles.sh dist/bundles HEAD
+```
 You can replace HEAD with a tag or commit hash.
 
 Transfer to offline servers
@@ -32,12 +33,13 @@ Copy the needed tar.gz file(s) to each target host using your approved method.
 
 Extract (offline target)
 Example target directory: /opt/elk
-
-bash
+```
 sudo mkdir -p /opt/elk
 sudo tar --no-same-owner -xzf es-controller.tar.gz -C /opt/elk
+```
 After extraction, you will have:
+```
 /opt/elk/elk-bundle/
-
+```
 Then follow the component READMEs and scripts/bootstrap-all.sh.
 
