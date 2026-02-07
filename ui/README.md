@@ -24,8 +24,8 @@ docker logs -f akhq
 docker logs -f kafka-ui
 
 URLs
-AKHQ: http://<ui-host>:8080
-Kafka UI: http://<ui-host>:8081
+AKHQ: http://<ui-host>:8081
+Kafka UI: http://<ui-host>:8082
 Notes
 If you change broker IPs/ports, update them in docker-compose.akhq-kafka-ui.yml.
 For secured Kafka (SASL/TLS), additional configuration is required (not enabled in this repo by default).
