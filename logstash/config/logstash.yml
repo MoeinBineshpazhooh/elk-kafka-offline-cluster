@@ -1,13 +1,15 @@
 # Logstash settings
 
 # API / Monitoring endpoint (defaults to 9600)
-http.host: "0.0.0.0"
-http.port: 9600
+api.http.host: "0.0.0.0"
+api.http.port: 9600
 
 # Pipeline settings
 pipeline.workers: 2
 pipeline.batch.size: 125
 pipeline.batch.delay: 50
+
+queue.type: persisted
 
 # Logs
 log.level: info
