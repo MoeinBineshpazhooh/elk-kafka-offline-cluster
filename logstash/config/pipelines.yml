@@ -1,2 +1,5 @@
-- pipeline.id: main
-  path.config: "/usr/share/logstash/pipeline/logstash.conf"
+- pipeline.id: default-kafka
+  path.config: "/usr/share/logstash/pipeline/kafka-to-elasticsearch.conf"
+  pipeline.workers: 2
+  pipeline.batch.size: 125
+  pipeline.batch.delay: 50
