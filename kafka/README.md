@@ -118,7 +118,7 @@ See [`security/access-matrix.yaml`](security/access-matrix.yaml) for the sanitiz
 | Principal | Resource | Access |
 |---|---|---|
 | `filebeat` | `demo-application-logs` | `WRITE`, `DESCRIBE` |
-| `logstash` | `demo-application-logs` | `READ`, `DESCRIBE` |
+| `logstash` | `demo-application-logs` | `READ`, `DESCRIBE` + consumer group |
 | `collector` | `demo-platform-events` | `WRITE`, `DESCRIBE` |
 | `akhq` | demo topics | `READ`, `DESCRIBE` |
 | `app` | `demo-application-logs` | `WRITE`, `DESCRIBE` |
@@ -144,7 +144,8 @@ kafka/
 │
 ├── security/
 │   ├── access-matrix.yaml
-│   └── admin-client.properties.example
+│   ├── admin-client.properties.example
+│   └── apply-acls.sh
 │
 ├── docker-compose.broker01.yml
 ├── docker-compose.broker02.yml
@@ -154,6 +155,7 @@ kafka/
 ├── docker-compose.controller03.yml
 │
 └── topics/
+    ├── topics.yml
     └── create-topics.sh
 ```
 
@@ -204,6 +206,29 @@ docker compose -f docker-compose.broker03.yml up -d
 
 > Each host uses its own compose file. This matches the distributed, host-networked deployment model.
 
+### 4. Create demo topics
+
+The repository ships only fictional topic definitions. Create them after the brokers are healthy:
+
+```bash
+cd kafka/topics
+BOOTSTRAP_SERVERS="192.0.2.21:9092,192.0.2.22:9092,192.0.2.23:9092" \
+  ./create-topics.sh
+```
+
+### 5. Apply ACLs
+
+Create a local admin client file from [`security/admin-client.properties.example`](security/admin-client.properties.example), keep the real file outside Git, and then run:
+
+```bash
+cd kafka/security
+CONFIG_FILE="./admin-client.properties" \
+KAFKA_CONTAINER="kafka-broker01" \
+  ./apply-acls.sh
+```
+
+The script copies the client properties into the running container only for the ACL operation and removes it on exit.
+
 ---
 
 ## 🔎 Verification
@@ -227,12 +252,14 @@ docker exec kafka-broker01 bash -lc \
    --command-config /path/to/admin-client.properties"
 ```
 
-### Topics
+### ACLs
 
 ```bash
-cd kafka/topics
-BOOTSTRAP_SERVERS="192.0.2.21:9092,192.0.2.22:9092,192.0.2.23:9092" \
-  ./create-topics.sh
+docker exec kafka-broker01 bash -lc \
+  "/opt/kafka/bin/kafka-acls.sh \
+   --bootstrap-server 192.0.2.21:9092 \
+   --command-config /path/to/admin-client.properties \
+   --list"
 ```
 
 ---
