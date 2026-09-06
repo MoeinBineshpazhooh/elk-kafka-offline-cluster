@@ -1,91 +1,112 @@
-# Elasticsearch ILM
-
 <div align="center">
 
-### Lifecycle Management for the Observability Data Path
+# 🔄 Elasticsearch ILM
 
-`Index Template` → `Write Alias` → `Rollover` → `Warm` → `Delete`
+### Predictable Rollover and Retention for Observability Data
+
+**Rollover · Warm phase · 30-day retention · Stable write alias**
 
 </div>
 
 ---
 
-## 🎯 Purpose
+## 🧭 Purpose
 
-This directory contains the lifecycle policy used by the Elasticsearch layer of the portfolio observability platform.
+This directory defines the Elasticsearch Index Lifecycle Management policy used by the observability data path.
 
-The implementation keeps lifecycle management simple and operationally predictable:
-
-- rollover by primary-shard size
-- rollover by age
-- warm phase after the hot period
-- automatic deletion after the retention period
-- alias-based writes for rollover-compatible ingestion
-
-No application-specific infrastructure identifiers are required in these files.
-
----
-
-## 🔄 Lifecycle
+The design keeps lifecycle ownership inside Elasticsearch. Ingestion clients write to a stable alias and do not need to know which numbered backing index is currently active.
 
 ```text
-                 ┌──────────────────────┐
-                 │  Write Index Alias   │
-                 └──────────┬───────────┘
-                            │
-                            ▼
-                 ┌──────────────────────┐
-                 │         HOT          │
-                 │                      │
-                 │  max shard: 10 GB    │
-                 │  max age:    1 day   │
-                 └──────────┬───────────┘
-                            │
-                         rollover
-                            │
-                            ▼
-                 ┌──────────────────────┐
-                 │        WARM          │
-                 │                      │
-                 │     after 1 day      │
-                 └──────────┬───────────┘
-                            │
-                         30 days
-                            │
-                            ▼
-                 ┌──────────────────────┐
-                 │       DELETE         │
-                 │                      │
-                 │   retention: 30d     │
-                 └──────────────────────┘
+                    Logstash
+                       │
+                       ▼
+                 demo-logs alias
+                       │
+                       ▼
+               demo-logs-000001
+                       │
+              ┌────────┴────────┐
+              │                 │
+           10 GB               1 day
+              │                 │
+              └────────┬────────┘
+                       ▼
+                    Rollover
+                       │
+                       ▼
+               demo-logs-000002
+                       │
+                       ▼
+                     Warm
+                       │
+                     30d
+                       ▼
+                    Delete
 ```
-
-## 📋 Current Policy
-
-| Phase | Condition | Action |
-|---|---|---|
-| Hot | Primary shard reaches 10 GB **or** index reaches 1 day | Rollover |
-| Warm | 1 day | No additional action defined |
-| Delete | 30 days | Delete index |
-
-The policy intentionally does not add extra tiering or allocation rules that are not part of the current implementation.
 
 ---
 
-## 📁 Files
+## 🎯 Current Policy
+
+| Phase | Trigger / Age | Action |
+|---|---|---|
+| **Hot** | Primary shard `10 GB` or index age `1 day` | Rollover |
+| **Warm** | `1 day` | No additional action configured |
+| **Delete** | `30 days` | Delete index |
+
+Policy file:
+
+```text
+observability-ilm-policy.json
+```
+
+The policy intentionally does not introduce additional allocation, snapshot, or tiering actions that are not part of the implemented configuration.
+
+---
+
+## 🧱 Architecture
+
+ILM is one part of a three-stage Elasticsearch lifecycle configuration:
+
+```text
+1. ILM Policy
+       │
+       ▼
+2. Index Template
+       │
+       │ lifecycle.name
+       │ rollover_alias
+       ▼
+3. Bootstrap Index + Write Alias
+       │
+       ▼
+4. Elasticsearch manages rollover
+```
+
+The important separation is that the **template describes the lifecycle relationship**, while the **bootstrap operation creates the first write index and assigns the initial write flag**.
+
+This prevents every future backing index from inheriting `is_write_index: true`.
+
+---
+
+## 📁 Repository Layout
 
 ```text
 elasticsearch/
-└── ilm/
-    ├── observability-ilm-policy.json
+├── ilm/
+│   ├── observability-ilm-policy.json
+│   └── README.md
+└── templates/
+    ├── observability-index-template.json
+    ├── create-rollover-index.sh
     └── README.md
 ```
 
 ---
 
-## 🚀 Apply the Policy
+## 🚀 Deployment Order
 
-Authenticate to Elasticsearch and create/update the lifecycle policy using the JSON file:
+### Step 1 — Apply the ILM policy
 
 ```bash
 curl --cacert /path/to/ca.crt \
@@ -96,13 +117,46 @@ curl --cacert /path/to/ca.crt \
   --data-binary @observability-ilm-policy.json
 ```
 
-> Replace placeholders locally. Do not commit credentials or private infrastructure values.
+### Step 2 — Apply the index template
+
+Register the template under:
+
+```text
+../templates/observability-index-template.json
+```
+
+The template associates matching indices with:
+
+```text
+observability-ilm-policy
+demo-logs
+```
+
+### Step 3 — Bootstrap the first index
+
+Run:
+
+```bash
+../templates/create-rollover-index.sh
+```
+
+The bootstrap creates the initial numbered index and marks the alias as its write index.
+
+### Step 4 — Start ingestion
+
+Logstash writes to:
+
+```text
+demo-logs
+```
+
+not directly to `demo-logs-000001` or later backing indices.
 
 ---
 
-## 🔎 Verify
+## 🔎 Verification
 
-Check the policy:
+### Policy
 
 ```bash
 curl --cacert /path/to/ca.crt \
@@ -110,59 +164,104 @@ curl --cacert /path/to/ca.crt \
   "https://<ELASTICSEARCH_HOST>:9200/_ilm/policy/observability-ilm-policy?pretty"
 ```
 
-Check the lifecycle status of an index:
+### Alias
 
 ```bash
 curl --cacert /path/to/ca.crt \
   -u elastic:<PASSWORD> \
-  "https://<ELASTICSEARCH_HOST>:9200/<INDEX_NAME>/_ilm/explain?pretty"
+  "https://<ELASTICSEARCH_HOST>:9200/_alias/demo-logs?pretty"
+```
+
+### ILM state
+
+```bash
+curl --cacert /path/to/ca.crt \
+  -u elastic:<PASSWORD> \
+  "https://<ELASTICSEARCH_HOST>:9200/demo-logs-*/_ilm/explain?pretty"
+```
+
+### Index generation
+
+```bash
+curl --cacert /path/to/ca.crt \
+  -u elastic:<PASSWORD> \
+  "https://<ELASTICSEARCH_HOST>:9200/_cat/indices/demo-logs-*?v"
 ```
 
 ---
 
-## 🔗 Rollover Compatibility
+## 🧯 Rollover Troubleshooting
 
-The policy is intended to be used with an index template and rollover alias.
+A rollover condition being configured does not mean rollover occurs immediately. The configured age or primary-shard-size threshold must be reached.
 
-The resulting ingestion pattern is:
+Use this sequence:
 
 ```text
-Producer
-   │
-   ▼
-Log ingestion pipeline
-   │
-   ▼
-Write alias
-   │
-   ▼
-Current write index
-   │
-   ├── 10 GB reached ──┐
-   └── 1 day reached ──┤
-                       ▼
-                    Rollover
-                       │
-                       ▼
-                 New write index
+Policy exists?
+      │
+      ▼
+Template applied?
+      │
+      ▼
+Alias configured?
+      │
+      ▼
+Exactly one write index?
+      │
+      ▼
+ILM explain healthy?
+      │
+      ▼
+Threshold actually reached?
+      │
+      ▼
+Rollover occurs
 ```
 
-The alias remains stable for clients while Elasticsearch creates successive backing indices.
+### Multiple write indices
+
+If more than one backing index is marked as the write index, correct the alias before continuing. The bootstrap script is intentionally responsible for assigning the initial write flag.
+
+### Rollover did not happen at the expected size
+
+Check the primary-shard size rather than total index-store size. The policy uses `max_primary_shard_size`.
+
+### Rollover did not happen at the expected age
+
+Check the ILM explain output and index creation/lifecycle timestamps. Verify that the index is managed by the expected policy.
 
 ---
 
-## 🛡️ Operational Notes
+## 🛡️ Operational Principles
 
-- Keep the policy name stable once referenced by templates.
-- Apply the policy before creating the first rollover-managed index.
-- Verify the write alias points to exactly one current write index.
-- Monitor ILM state with `_ilm/explain` when troubleshooting rollover.
-- Keep credentials outside Git.
+- Keep the ILM policy name stable once referenced by the index template.
+- Keep the write alias stable for ingestion clients.
+- Bootstrap the first write index explicitly.
+- Maintain exactly one active write index for the alias.
+- Treat the numbered backing-index names as implementation details.
+- Validate `_ilm/explain` before changing policy settings.
+- Keep credentials and private infrastructure values outside Git.
+
+---
+
+## 🔒 Portfolio Safety
+
+The policy and documentation contain only fictional, portfolio-safe identifiers and placeholders.
+
+Never commit:
+
+- production addresses
+- passwords or tokens
+- private keys
+- private certificates
+- environment-specific registry names
 
 ---
 
 <div align="center">
 
-**Simple lifecycle. Predictable retention. Operationally focused.**
+### Policy → Template → Bootstrap → Rollover → Retention
+
+**Elasticsearch owns the lifecycle. Clients keep a stable write target.**
 
 </div>
