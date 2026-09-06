@@ -34,20 +34,6 @@ principals:
   - akhq
   - app
 
-credentials:
-  kafka-admin: CHANGE_ME_KAFKA_ADMIN_PASSWORD
-  broker01: CHANGE_ME_BROKER01_PASSWORD
-  broker02: CHANGE_ME_BROKER02_PASSWORD
-  broker03: CHANGE_ME_BROKER03_PASSWORD
-  controller01: CHANGE_ME_CONTROLLER01_PASSWORD
-  controller02: CHANGE_ME_CONTROLLER02_PASSWORD
-  controller03: CHANGE_ME_CONTROLLER03_PASSWORD
-  filebeat: CHANGE_ME_FILEBEAT_PASSWORD
-  logstash: CHANGE_ME_LOGSTASH_PASSWORD
-  collector: CHANGE_ME_COLLECTOR_PASSWORD
-  akhq: CHANGE_ME_AKHQ_PASSWORD
-  app: CHANGE_ME_APP_PASSWORD
-
 acl_policy:
   cluster_admin:
     principal: kafka-admin
@@ -65,6 +51,8 @@ acl_policy:
     permissions:
       - topic: demo-application-logs
         actions: [READ, DESCRIBE]
+      - group: demo-logstash-consumers
+        actions: [READ]
 
   collector:
     principal: collector
@@ -81,6 +69,8 @@ acl_policy:
         actions: [READ, DESCRIBE]
       - topic: demo-platform-events
         actions: [READ, DESCRIBE]
+      - group: demo-akhq-consumers
+        actions: [READ]
 
   application:
     principal: app
@@ -90,6 +80,6 @@ acl_policy:
 
 notes:
   - "Use separate passwords for every principal."
-  - "Do not commit real passwords, tokens, certificates, or private keys."
-  - "The topic names above are fictional portfolio examples."
-  - "Adjust topic names and permissions when integrating another workload."
+  - "Keep real credentials in a local secret store or ignored client properties file."
+  - "The topic and consumer-group names above are fictional portfolio examples."
+  - "Adjust permissions when integrating another workload."
