@@ -38,7 +38,7 @@
              │                          │                          │
              └──────────────────────────┼──────────────────────────┘
                                         ▼
-                              📨 Kafka Topics
+                              📨 Demo Topics
                                         │
                                         ▼
                                   🚚 Logstash
@@ -117,11 +117,11 @@ See [`security/access-matrix.yaml`](security/access-matrix.yaml) for the sanitiz
 
 | Principal | Resource | Access |
 |---|---|---|
-| `filebeat` | `scm-logs` | `WRITE`, `DESCRIBE` |
-| `logstash` | `scm-logs` | `READ`, `DESCRIBE` |
-| `collector` | `scm-monitoring` | `WRITE`, `DESCRIBE` |
-| `akhq` | monitoring/log topics | `READ`, `DESCRIBE` |
-| `app` | `scm-logs` | `WRITE`, `DESCRIBE` |
+| `filebeat` | `demo-application-logs` | `WRITE`, `DESCRIBE` |
+| `logstash` | `demo-application-logs` | `READ`, `DESCRIBE` |
+| `collector` | `demo-platform-events` | `WRITE`, `DESCRIBE` |
+| `akhq` | demo topics | `READ`, `DESCRIBE` |
+| `app` | `demo-application-logs` | `WRITE`, `DESCRIBE` |
 | `kafka-admin` | cluster | administrative access |
 
 The application identities are **not** cluster super-users. Internal Kafka node identities are explicitly separated from application identities.
@@ -248,7 +248,7 @@ Transaction state replication    = 3
 Transaction state minimum ISR    = 2
 ```
 
-This gives the 3-broker cluster a practical **N=3 / quorum-style durability posture** for the logging backbone.
+This gives the 3-broker cluster a practical **N=3 / quorum-style durability posture** for the event-streaming backbone.
 
 ---
 
@@ -315,7 +315,7 @@ The repository intentionally contains `CHANGE_ME_*` placeholders rather than inf
 ❼ ISR count >= min.insync.replicas?
 ```
 
-This ordering is useful when diagnosing the real-world failure modes of an authenticated KRaft cluster: quorum, networking, authentication, authorization, topic configuration, and replication are separate failure domains.
+This ordering separates quorum, networking, authentication, authorization, topic configuration, and replication failure domains.
 
 ---
 
