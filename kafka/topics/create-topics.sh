@@ -4,7 +4,7 @@ set -euo pipefail
 TOPICS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/topics.yml"
 
 KAFKA_CONTAINER="${KAFKA_CONTAINER:-kafka-broker01}"
-BOOTSTRAP_SERVERS="${BOOTSTRAP_SERVERS:-10.10.4.131:9092,10.10.4.132:9092}"
+BOOTSTRAP_SERVERS="${BOOTSTRAP_SERVERS:-192.0.2.21:9092,192.0.2.22:9092}"
 
 if [[ ! -f "${TOPICS_FILE}" ]]; then
   echo "[ERROR] topics.yml not found: ${TOPICS_FILE}"
