@@ -16,7 +16,5 @@ services:
     volumes:
       - ./config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - ./config/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
-      - ./logstash/pipeline/kafka-to-elasticsearch.conf:/usr/share/logstash/pipeline/kafka-to-elasticsearch.conf:ro
-
-      # CA cert to trust Elasticsearch HTTPS
+      - ./pipeline/demo-kafka-to-elasticsearch.conf:/usr/share/logstash/pipeline/demo-kafka-to-elasticsearch.conf:ro
       - /opt/elastic/logstash01/certs/ca/ca.crt:/usr/share/logstash/config/certs/ca/ca.crt:ro
