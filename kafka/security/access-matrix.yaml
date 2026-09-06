@@ -1,0 +1,102 @@
+# ============================================================
+# Kafka Security Access Matrix
+# ============================================================
+# Documentation-safe reference configuration.
+# Passwords are NEVER stored here.
+# All identities below are fictional/sanitized portfolio values.
+#
+# Security model:
+#   Authentication : SASL/PLAIN
+#   Authorization  : Kafka StandardAuthorizer / ACLs
+#   Default        : deny when no ACL exists
+# ============================================================
+
+cluster:
+  name: enterprise-observability-kafka
+  mode: kraft
+  controllers: 3
+  brokers: 3
+  client_listener: SASL_PLAINTEXT
+  controller_listener: SASL_PLAINTEXT
+  sasl_mechanism: PLAIN
+
+principals:
+  # Cluster identities
+  - kafka-admin
+  - broker01
+  - broker02
+  - broker03
+  - controller01
+  - controller02
+  - controller03
+
+  # Application identities
+  - filebeat
+  - logstash
+  - collector
+  - akhq
+  - app
+
+credentials:
+  # Password values belong in local secret/env files only.
+  kafka-admin: CHANGE_ME_KAFKA_ADMIN_PASSWORD
+  broker01: CHANGE_ME_BROKER01_PASSWORD
+  broker02: CHANGE_ME_BROKER02_PASSWORD
+  broker03: CHANGE_ME_BROKER03_PASSWORD
+  controller01: CHANGE_ME_CONTROLLER01_PASSWORD
+  controller02: CHANGE_ME_CONTROLLER02_PASSWORD
+  controller03: CHANGE_ME_CONTROLLER03_PASSWORD
+  filebeat: CHANGE_ME_FILEBEAT_PASSWORD
+  logstash: CHANGE_ME_LOGSTASH_PASSWORD
+  collector: CHANGE_ME_COLLECTOR_PASSWORD
+  akhq: CHANGE_ME_AKHQ_PASSWORD
+  app: CHANGE_ME_APP_PASSWORD
+
+acl_policy:
+  # Internal cluster identities are represented as super users in the
+  # node properties because they must perform KRaft/internal operations.
+  cluster_admin:
+    principal: kafka-admin
+    permissions: [ALL]
+    scope: cluster
+
+  # Application access follows least privilege.
+  filebeat:
+    principal: filebeat
+    permissions:
+      - topic: scm-logs
+        actions: [WRITE, DESCRIBE]
+
+  logstash:
+    principal: logstash
+    permissions:
+      - topic: scm-logs
+        actions: [READ, DESCRIBE]
+
+  collector:
+    principal: collector
+    permissions:
+      - topic: scm-monitoring
+        actions: [WRITE, DESCRIBE]
+
+  akhq:
+    principal: akhq
+    permissions:
+      - scope: cluster
+        actions: [DESCRIBE]
+      - topic: scm-logs
+        actions: [READ, DESCRIBE]
+      - topic: scm-monitoring
+        actions: [READ, DESCRIBE]
+
+  application:
+    principal: app
+    permissions:
+      - topic: scm-logs
+        actions: [WRITE, DESCRIBE]
+
+notes:
+  - "Use separate passwords for every principal."
+  - "Do not commit real passwords, tokens, certificates, or private keys."
+  - "The exact ACL bootstrap commands should be generated from this matrix."
+  - "Adjust topic names and permissions when integrating another workload."
