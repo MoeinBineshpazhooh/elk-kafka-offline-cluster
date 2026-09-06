@@ -1,0 +1,54 @@
+filebeat.inputs:
+  - type: filestream
+    id: demo-application-logs
+    enabled: true
+    paths:
+      - /var/log/demo-app/*.log
+
+    prospector.scanner.check_interval: 1s
+    harvester_limit: 0
+    harvester_buffer_size: 4194304
+    backoff.init: 100ms
+    backoff.max: 1s
+
+    parsers:
+      - ndjson:
+          target: ""
+          overwrite_keys: true
+          add_error_key: true
+
+    processors:
+      - add_fields:
+          target: service
+          fields:
+            source: demo-application
+            environment: portfolio
+      - timestamp:
+          field: timestamp
+          layouts:
+            - '2006-01-02T15:04:05.000Z07:00'
+          ignore_missing: true
+          ignore_failure: true
+
+output.kafka:
+  hosts: ["192.0.2.21:9092", "192.0.2.22:9092", "192.0.2.23:9092"]
+  topic: 'demo-application-logs'
+  partition.round_robin:
+    reachable_only: false
+  required_acks: 1
+  compression: gzip
+  max_message_bytes: 1000000
+
+  # Kafka authentication: SASL/PLAIN
+  username: '${KAFKA_USERNAME}'
+  password: '${KAFKA_PASSWORD}'
+  sasl.mechanism: PLAIN
+  security.protocol: SASL_PLAINTEXT
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /usr/share/filebeat/logs
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
