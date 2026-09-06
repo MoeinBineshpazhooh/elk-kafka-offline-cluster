@@ -18,81 +18,72 @@
 ```text
                          ┌──────────────────────────────┐
                          │       🧠 KRaft Quorum        │
-                         │                              │
-                         │  👑 Controller 01  :9093    │
-                         │  👑 Controller 02  :9093    │
-                         │  👑 Controller 03  :9093    │
+                         │  👑 Controller 01 :9093     │
+                         │  👑 Controller 02 :9093     │
+                         │  👑 Controller 03 :9093     │
                          └──────────────┬───────────────┘
                                         │ metadata
                  ┌──────────────────────┼──────────────────────┐
-                 │                      │                      │
-          ┌──────▼──────┐        ┌──────▼──────┐        ┌──────▼──────┐
-          │ 🟦 Broker 01 │        │ 🟦 Broker 02 │        │ 🟦 Broker 03 │
-          │ :9092        │        │ :9092        │        │ :9092        │
-          └──────┬───────┘        └──────┬───────┘        └──────┬───────┘
-                 └──────────────────────┬───────────────────────┘
-                                        │
-             ┌──────────────────────────┼──────────────────────────┐
-             │                          │                          │
-        📥 Filebeat                📥 Collector                🖥️ Apps
-             │                          │                          │
-             └──────────────────────────┼──────────────────────────┘
-                                        ▼
-                              📨 Demo Topics
-                                        │
-                                        ▼
+                 ▼                      ▼                      ▼
+          ┌────────────┐         ┌────────────┐         ┌────────────┐
+          │ 🟦 Broker 01│         │ 🟦 Broker 02│         │ 🟦 Broker 03│
+          │ :9092      │         │ :9092      │         │ :9092      │
+          └─────┬──────┘         └─────┬──────┘         └─────┬──────┘
+                └──────────────────────┼──────────────────────┘
+                                       ▼
+                                  📨 Demo Topics
+                                       │
+                 ┌─────────────────────┼─────────────────────┐
+                 ▼                     ▼                     ▼
+             🛰️ Filebeat          📡 Collector            🖥️ Apps
+                                       │
+                                       ▼
                                   🚚 Logstash
-                                        │
-                                        ▼
-                              🔎 Elasticsearch
-                                        │
-                                        ▼
+                                       │
+                                       ▼
+                                🔎 Elasticsearch
+                                       │
+                                       ▼
                                    📊 Kibana
 ```
 
-> **Design goal:** Kafka is the resilient event-streaming backbone between producers and the ELK ingestion layer. KRaft removes ZooKeeper and the 3-controller quorum provides metadata-plane fault tolerance.
+> **Design goal:** Kafka is the resilient transport boundary between producers and downstream processing. KRaft removes ZooKeeper, while the three-controller quorum provides metadata-plane fault tolerance.
 
 ---
 
 ## 🧩 Node Layout
 
-| Role | Node ID | Documentation address | Port | Identity |
+| Role | Node ID | Address | Port | Identity |
 |---|---:|---|---:|---|
-| 👑 Controller 01 | 1 | `192.0.2.11` | 9093 | `controller01` |
-| 👑 Controller 02 | 2 | `192.0.2.12` | 9093 | `controller02` |
-| 👑 Controller 03 | 3 | `192.0.2.13` | 9093 | `controller03` |
-| 🟦 Broker 01 | 4 | `192.0.2.21` | 9092 | `broker01` |
-| 🟦 Broker 02 | 5 | `192.0.2.22` | 9092 | `broker02` |
-| 🟦 Broker 03 | 6 | `192.0.2.23` | 9092 | `broker03` |
+| 👑 Controller 01 | 1 | `<CONTROLLER_01_HOST>` | 9093 | `controller01` |
+| 👑 Controller 02 | 2 | `<CONTROLLER_02_HOST>` | 9093 | `controller02` |
+| 👑 Controller 03 | 3 | `<CONTROLLER_03_HOST>` | 9093 | `controller03` |
+| 🟦 Broker 01 | 4 | `<BROKER_01_HOST>` | 9092 | `broker01` |
+| 🟦 Broker 02 | 5 | `<BROKER_02_HOST>` | 9092 | `broker02` |
+| 🟦 Broker 03 | 6 | `<BROKER_03_HOST>` | 9092 | `broker03` |
 
-> Addresses above use RFC 5737 documentation space. Replace them in a real deployment.
+All addresses are placeholders and must be supplied locally.
 
 ---
 
 ## 🔐 Security Model
 
-Authentication and authorization are deliberately separated:
-
 ```text
-             ┌───────────────────────┐
-             │ Client / Node         │
-             └──────────┬────────────┘
-                        │ SASL/PLAIN
-                        ▼
-             ┌───────────────────────┐
-             │ Kafka Authentication  │
-             └──────────┬────────────┘
-                        │ authenticated principal
-                        ▼
-             ┌───────────────────────┐
-             │ StandardAuthorizer    │
-             │ ACL evaluation        │
-             └──────────┬────────────┘
-                        │
-                ┌───────┴───────┐
-                ▼               ▼
-              ALLOW             DENY
+Client / Node
+     │
+     │ SASL/PLAIN
+     ▼
+Kafka Authentication
+     │ authenticated principal
+     ▼
+StandardAuthorizer
+     │
+ ┌───┴───┐
+ ▼       ▼
+ALLOW   DENY
 ```
+
+Authentication and authorization are deliberately separate.
 
 ### 👥 Principals
 
@@ -100,16 +91,14 @@ Authentication and authorization are deliberately separated:
 🔑 kafka-admin
 🟦 broker01 / broker02 / broker03
 👑 controller01 / controller02 / controller03
-📥 filebeat
+🛰️ filebeat
 🚚 logstash
 📡 collector
 🖥️ akhq
 📦 app
 ```
 
-**Important:** passwords in this repository are placeholders only. Real passwords belong in local ignored environment/secret files.
-
-See [`security/access-matrix.yaml`](security/access-matrix.yaml) for the sanitized identity and ACL reference.
+> `SASL_PLAINTEXT` authenticates clients but does **not** encrypt traffic. TLS-enabled Kafka listeners are required when Kafka transport confidentiality is needed.
 
 ---
 
@@ -124,7 +113,23 @@ See [`security/access-matrix.yaml`](security/access-matrix.yaml) for the sanitiz
 | `app` | `demo-application-logs` | `WRITE`, `DESCRIBE` |
 | `kafka-admin` | cluster | administrative access |
 
-The application identities are **not** cluster super-users. Internal Kafka node identities are explicitly separated from application identities.
+Application identities are not cluster super-users.
+
+---
+
+## 🧠 Engineering Decisions
+
+| Decision | Why |
+|---|---|
+| KRaft | Remove ZooKeeper and simplify Kafka metadata management |
+| 3 controllers | Maintain a practical metadata quorum |
+| 3 brokers | Replication and broker-level fault tolerance |
+| SASL/PLAIN | Explicit client authentication matching the implementation |
+| ACLs | Least-privilege producer/consumer access |
+| RF=3 / min ISR=2 | Maintain availability while requiring replicated writes |
+| Explicit topics | Prevent accidental topic creation |
+| Separate node identities | Avoid using application credentials for cluster operations |
+| Air-gapped deployment | Runtime hosts do not depend on public internet access |
 
 ---
 
@@ -141,19 +146,16 @@ kafka/
 │   ├── controller2.properties
 │   ├── controller3.properties
 │   └── controller-security.properties
-│
 ├── security/
 │   ├── access-matrix.yaml
 │   ├── admin-client.properties.example
 │   └── apply-acls.sh
-│
 ├── docker-compose.broker01.yml
 ├── docker-compose.broker02.yml
 ├── docker-compose.broker03.yml
 ├── docker-compose.controller01.yml
 ├── docker-compose.controller02.yml
 ├── docker-compose.controller03.yml
-│
 └── topics/
     ├── topics.yml
     └── create-topics.sh
@@ -170,64 +172,23 @@ docker run --rm apache/kafka:latest \
   bash -lc "/opt/kafka/bin/kafka-storage.sh random-uuid"
 ```
 
-Set the generated value in the local, ignored Kafka environment files.
+Store the generated value only in the local Kafka environment configuration.
 
-### 2. Prepare controller storage
+### 2. Start controllers
 
-Run on each controller host:
+Prepare local controller storage and start the three controller Compose files on their respective hosts.
 
-```bash
-sudo mkdir -p /opt/kafka/controller/data
-```
+### 3. Start brokers
 
-Start the three controllers:
-
-```bash
-docker compose -f docker-compose.controller01.yml up -d
-docker compose -f docker-compose.controller02.yml up -d
-docker compose -f docker-compose.controller03.yml up -d
-```
-
-### 3. Prepare broker storage
-
-Run on each broker host:
-
-```bash
-sudo mkdir -p /opt/kafka/broker/data
-```
-
-Start the three brokers:
-
-```bash
-docker compose -f docker-compose.broker01.yml up -d
-docker compose -f docker-compose.broker02.yml up -d
-docker compose -f docker-compose.broker03.yml up -d
-```
-
-> Each host uses its own compose file. This matches the distributed, host-networked deployment model.
+Prepare local broker storage and start the three broker Compose files on their respective hosts.
 
 ### 4. Create demo topics
 
-The repository ships only fictional topic definitions. Create them after the brokers are healthy:
-
-```bash
-cd kafka/topics
-BOOTSTRAP_SERVERS="192.0.2.21:9092,192.0.2.22:9092,192.0.2.23:9092" \
-  ./create-topics.sh
-```
+Use `topics/create-topics.sh` after broker health is confirmed. Supply the local bootstrap addresses through the environment rather than committing them.
 
 ### 5. Apply ACLs
 
-Create a local admin client file from [`security/admin-client.properties.example`](security/admin-client.properties.example), keep the real file outside Git, and then run:
-
-```bash
-cd kafka/security
-CONFIG_FILE="./admin-client.properties" \
-KAFKA_CONTAINER="kafka-broker01" \
-  ./apply-acls.sh
-```
-
-The script copies the client properties into the running container only for the ACL operation and removes it on exit.
+Create the local admin client configuration from `security/admin-client.properties.example`, then run `security/apply-acls.sh`.
 
 ---
 
@@ -238,17 +199,15 @@ The script copies the client properties into the running container only for the 
 ```bash
 docker exec kafka-controller01 bash -lc \
   "/opt/kafka/bin/kafka-metadata-quorum.sh \
-   --bootstrap-controller 192.0.2.11:9093 describe --status"
+   --bootstrap-controller <CONTROLLER_01_HOST>:9093 describe --status"
 ```
 
-### Broker API connectivity
-
-Use a local SASL client configuration such as [`security/admin-client.properties.example`](security/admin-client.properties.example):
+### Broker API
 
 ```bash
 docker exec kafka-broker01 bash -lc \
   "/opt/kafka/bin/kafka-broker-api-versions.sh \
-   --bootstrap-server 192.0.2.21:9092 \
+   --bootstrap-server <BROKER_01_HOST>:9092 \
    --command-config /path/to/admin-client.properties"
 ```
 
@@ -257,7 +216,7 @@ docker exec kafka-broker01 bash -lc \
 ```bash
 docker exec kafka-broker01 bash -lc \
   "/opt/kafka/bin/kafka-acls.sh \
-   --bootstrap-server 192.0.2.21:9092 \
+   --bootstrap-server <BROKER_01_HOST>:9092 \
    --command-config /path/to/admin-client.properties \
    --list"
 ```
@@ -275,52 +234,33 @@ Transaction state replication    = 3
 Transaction state minimum ISR    = 2
 ```
 
-This gives the 3-broker cluster a practical **N=3 / quorum-style durability posture** for the event-streaming backbone.
+These settings provide a practical replicated durability posture for the three-broker event backbone.
 
 ---
 
-## 🧪 SASL Client Examples
+## 🧪 Practical Failure Story
 
-Every client should authenticate with its **own** principal:
-
-```properties
-security.protocol=SASL_PLAINTEXT
-sasl.mechanism=PLAIN
-sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="CLIENT_USER" password="CHANGE_ME_CLIENT_PASSWORD";
-```
-
-Examples:
+When Kafka appears reachable but clients cannot publish or consume, troubleshoot in this order:
 
 ```text
-Filebeat  → username=filebeat
-Logstash  → username=logstash
-Collector → username=collector
-AKHQ      → username=akhq
-Apps      → username=app
-Admin     → username=kafka-admin
+Controller quorum
+      ↓
+Broker registration
+      ↓
+Listener reachability
+      ↓
+SASL authentication
+      ↓
+ACL authorization
+      ↓
+Topic existence / configuration
+      ↓
+Partition assignment / consumer group
+      ↓
+ISR / replication health
 ```
 
-Never reuse the broker/controller password for an application.
-
----
-
-## 🗝️ Credential Rule
-
-```text
-                 Git repository
-                       │
-             ┌─────────┴─────────┐
-             │                   │
-       SAFE TO COMMIT       NEVER COMMIT
-             │                   │
-             ▼                   ▼
-       usernames           real passwords
-       placeholders        private keys
-       examples            production certs
-       documentation       tokens/secrets
-```
-
-The repository intentionally contains `CHANGE_ME_*` placeholders rather than infrastructure credentials.
+This ordering prevents authentication problems from being confused with ACL, networking, or replication problems.
 
 ---
 
@@ -331,18 +271,42 @@ The repository intentionally contains `CHANGE_ME_*` placeholders rather than inf
         ↓
 ❷ Broker registered in KRaft metadata?
         ↓
-❸ SASL credentials valid?
+❸ Listener / advertised listener reachable?
         ↓
-❹ Listener / advertised listener reachable?
+❹ SASL credentials valid?
         ↓
-❺ ACL grants the requested operation?
+❺ ACL grants the operation?
         ↓
-❻ Topic exists with expected replication?
+❻ Topic exists?
         ↓
-❼ ISR count >= min.insync.replicas?
+❼ Consumer group assigned partitions?
+        ↓
+❽ ISR count >= min.insync.replicas?
 ```
 
-This ordering separates quorum, networking, authentication, authorization, topic configuration, and replication failure domains.
+---
+
+## 🗝️ Credential Rule
+
+```text
+Git repository
+      │
+ ┌────┴────┐
+ ▼         ▼
+SAFE     NEVER
+ │         │
+examples  passwords
+placeholders private keys
+documentation tokens
+```
+
+Real credentials belong in local ignored configuration only.
+
+---
+
+## 🔒 Portfolio Safety
+
+All public addresses are masked, topics and environment identifiers are fictional, and credentials are placeholders. No production secrets or infrastructure identifiers belong in Git.
 
 ---
 
@@ -350,6 +314,6 @@ This ordering separates quorum, networking, authentication, authorization, topic
 
 ### ⚡ Kafka → 🚚 Logstash → 🔎 Elasticsearch → 📊 Kibana
 
-**Secure. Decoupled. Fault-tolerant. Air-gapped ready.**
+**Authenticated. Replicated. Decoupled. Operationally explainable.**
 
 </div>
