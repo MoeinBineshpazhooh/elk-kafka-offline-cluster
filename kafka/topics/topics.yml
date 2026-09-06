@@ -1,0 +1,14 @@
+# Fictional portfolio topics only.
+# Replace names with environment-specific values during deployment.
+
+- name: demo-application-logs
+  partitions: 6
+  replication_factor: 3
+
+- name: demo-platform-events
+  partitions: 3
+  replication_factor: 3
+
+- name: demo-metrics
+  partitions: 3
+  replication_factor: 3
