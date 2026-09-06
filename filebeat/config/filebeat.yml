@@ -1,38 +1,11 @@
-filebeat.inputs:
-  - type: filestream
-    id: demo-application-logs
-    enabled: true
-    paths:
-      - /var/log/demo-app/*.log
-
-    prospector.scanner.check_interval: 1s
-    harvester_limit: 0
-    harvester_buffer_size: 4194304
-    backoff.init: 100ms
-    backoff.max: 1s
-
-    parsers:
-      - ndjson:
-          target: ""
-          overwrite_keys: true
-          add_error_key: true
-
-    processors:
-      - add_fields:
-          target: service
-          fields:
-            source: demo-application
-            environment: portfolio
-      - timestamp:
-          field: timestamp
-          layouts:
-            - '2006-01-02T15:04:05.000Z07:00'
-          ignore_missing: true
-          ignore_failure: true
+filebeat.config.inputs:
+  enabled: true
+  path: /usr/share/filebeat/inputs/*.yml
+  reload.enabled: false
 
 output.kafka:
-  hosts: ["192.0.2.21:9092", "192.0.2.22:9092", "192.0.2.23:9092"]
-  topic: 'demo-application-logs'
+  hosts: ["${KAFKA_BOOTSTRAP_SERVERS}"]
+  topic: '${KAFKA_TOPIC}'
   partition.round_robin:
     reachable_only: false
   required_acks: 1
