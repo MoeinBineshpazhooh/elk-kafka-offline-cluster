@@ -10,7 +10,6 @@
 [![Kafka](https://img.shields.io/badge/Kafka-KRaft-231F20?logo=apachekafka)](https://kafka.apache.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Air-Gapped](https://img.shields.io/badge/Deployment-Air--Gapped-success)](#air-gapped-by-design)
-[![License](https://img.shields.io/github/license/MoeinBineshpazhooh/enterprise-observability-platform)](LICENSE)
 
 A production-oriented reference implementation for deploying an observable log-ingestion platform in **restricted and air-gapped environments**, with explicit security boundaries, durable Kafka transport, Elasticsearch lifecycle management, and isolated pipeline configuration.
 
@@ -95,12 +94,12 @@ See [`docs/end-to-end-flow.md`](docs/end-to-end-flow.md) for the detailed data p
 ├── inventory/                    # Example host layout
 ├── kafka/                        # KRaft controllers, brokers and ACLs
 │   ├── config/                   # Node-specific properties
-│   ├── security/                # ACL and client security material
-│   └── topics/                  # Example topic definitions
+│   ├── security/                 # ACL and client security material
+│   └── topics/                   # Example topic definitions
 ├── kibana/                       # Kibana deployment and configuration
 ├── logstash/                     # Isolated Kafka → Elasticsearch pipelines
-│   ├── config/                  # Logstash runtime configuration
-│   └── pipeline/                # Individual pipeline definitions
+│   ├── config/                   # Logstash runtime configuration
+│   └── pipeline/                 # Individual pipeline definitions
 ├── offline/                      # Offline package/image preparation
 ├── scripts/                      # Operational utilities
 └── ui/                           # Optional Kafka management UIs
@@ -263,7 +262,3 @@ The repository favors declarative configuration and deterministic bootstrap step
 This repository is intentionally presented as a **sanitized reference architecture**. Network addresses, topic names, usernames, passwords, host paths, and other environment-specific identifiers are fictional placeholders.
 
 The goal is to demonstrate the engineering approach: secure transport boundaries, resilient log delivery, configuration isolation, lifecycle management, offline operations, and operational troubleshooting.
-
-## License
-
-MIT — see [`LICENSE`](LICENSE).
