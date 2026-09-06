@@ -4,121 +4,101 @@
 
 ### 3-Node Secure Search & Observability Cluster
 
-**Docker Compose · TLS · Security · ILM · Snapshots · Operationally Focused**
-
-<br>
-
-![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.2.4-005571?style=for-the-badge&logo=elasticsearch&logoColor=white)
-![Nodes](https://img.shields.io/badge/Nodes-3-00A98F?style=for-the-badge)
-![TLS](https://img.shields.io/badge/TLS-Enabled-4B5563?style=for-the-badge)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
-![ILM](https://img.shields.io/badge/ILM-Rollover-8B5CF6?style=for-the-badge)
+**Elasticsearch 9.2.4 · Docker Compose · TLS · Security · ILM · Rollover**
 
 </div>
 
 ---
 
-## 🧭 Architecture
+## 🧭 Role in the Platform
+
+Elasticsearch is the secured storage and search layer for the observability pipeline. It receives processed events from Logstash over HTTPS, stores them across a three-node cluster, and manages log retention through Elasticsearch-native ILM and rollover.
 
 ```text
-                         ┌─────────────────────────┐
-                         │     Observability        │
-                         │       Data Sources       │
-                         └────────────┬────────────┘
-                                      │
-                                      ▼
-                         ┌─────────────────────────┐
-                         │       Log Pipeline      │
-                         └────────────┬────────────┘
-                                      │
-                                      ▼
-              ┌─────────────────────────────────────────────┐
-              │              Elasticsearch Cluster          │
-              │                                             │
-              │   ┌──────────┐   ┌──────────┐   ┌──────────┐ │
-              │   │  ES01    │   │  ES02    │   │  ES03    │ │
-              │   │ Master   │   │ Master   │   │ Master   │ │
-              │   │ Data     │   │ Data     │   │ Data     │ │
-              │   │ Ingest   │   │ Ingest   │   │ Ingest   │ │
-              │   └────┬─────┘   └────┬─────┘   └────┬─────┘ │
-              │        │              │              │       │
-              │        └──────────────┼──────────────┘       │
-              │                       │                      │
-              └───────────────────────┼──────────────────────┘
-                                      │
-                         ┌────────────┴────────────┐
-                         │   TLS / HTTPS : 9200   │
-                         └─────────────────────────┘
+Filebeat
+    │
+    ▼
+Kafka KRaft
+    │
+    ▼
+Logstash
+    │ HTTPS + CA validation
+    ▼
+┌──────────────────────────────────┐
+│      Elasticsearch Cluster       │
+│                                  │
+│  ES01        ES02        ES03    │
+│  master      master      master  │
+│  data        data        data    │
+│  ingest      ingest      ingest  │
+└──────────────────────────────────┘
+    │
+    ├── ILM / rollover
+    ├── persistent storage
+    └── Kibana search & visualization
 ```
+
+The implementation deliberately uses three combined-role nodes rather than introducing additional tiers that are not part of the current deployment.
 
 ---
 
 ## 🎯 What This Implements
 
-This component represents the Elasticsearch layer actually used in the platform:
-
-- **3 Elasticsearch nodes**
-- all nodes are **master-eligible + data + ingest**
+- three Elasticsearch nodes
+- `master`, `data`, and `ingest` roles on each node
+- K/V configuration separated per node
 - Docker Compose deployment per host
-- persistent data volumes
-- TLS on HTTP and transport traffic
+- persistent host-mounted data
+- HTTPS on the Elasticsearch HTTP layer
+- TLS on the transport layer
 - Elasticsearch security enabled
-- snapshot repository path configured
-- cluster monitoring collection enabled
-- ILM-based rollover and retention
-
-The configuration deliberately stays close to the implemented environment instead of introducing additional Elasticsearch tiers or services.
+- monitoring collection enabled
+- local snapshot repository path
+- ILM with rollover, warm, and delete phases
+- stable write-alias architecture
 
 ---
 
 ## 🖥️ Node Topology
 
-| Node | Address | Roles | HTTP | Transport |
-|---|---|---|---:|---:|
-| `es01` | `192.0.2.31` | master · data · ingest | `9200` | `9300` |
-| `es02` | `192.0.2.32` | master · data · ingest | `9200` | `9300` |
-| `es03` | `192.0.2.33` | master · data · ingest | `9200` | `9300` |
+| Node | Roles | HTTP | Transport | Deployment |
+|---|---|---:|---:|---|
+| `es01` | master · data · ingest | `9200` | `9300` | Compose on node 01 |
+| `es02` | master · data · ingest | `9200` | `9300` | Compose on node 02 |
+| `es03` | master · data · ingest | `9200` | `9300` | Compose on node 03 |
 
-> The addresses above are documentation-only examples. Replace them locally for deployment.
+All addresses are intentionally represented by placeholders in the public configuration. Replace them locally through the environment/configuration workflow.
 
 ---
 
-## 🔐 Security Model
+## 🔐 Security Architecture
+
+### Client traffic
 
 ```text
-                         ┌──────────────────┐
-                         │     Clients      │
-                         └────────┬─────────┘
-                                  │
-                           HTTPS + TLS
-                                  │
-                                  ▼
-                  ┌────────────────────────────┐
-                  │     Elasticsearch HTTP     │
-                  │         :9200              │
-                  └─────────────┬──────────────┘
-                                │
-                       Authentication
-                                │
-                                ▼
-                  ┌────────────────────────────┐
-                  │     Elasticsearch Security │
-                  └─────────────┬──────────────┘
-                                │
-                                ▼
-                  ┌────────────────────────────┐
-                  │      Cluster / Indices     │
-                  └────────────────────────────┘
-
-       Node-to-node communication
-                    │
-                 TLS / 9300
-                    │
-                    ▼
-          ES01 ◄────► ES02 ◄────► ES03
+Logstash / Kibana / Admin Client
+              │
+              │ HTTPS + TLS
+              ▼
+     Elasticsearch HTTP :9200
+              │
+              ▼
+      Elasticsearch Security
 ```
 
-HTTP TLS uses node-specific PKCS#12 keystores, while transport TLS provides encrypted node-to-node communication.
+### Node-to-node traffic
+
+```text
+ES01 ◄──────── TLS ────────► ES02
+  │                           │
+  └────────── TLS ───────────┘
+              │
+             ES03
+```
+
+HTTP TLS uses node-specific PKCS#12 material. Transport TLS protects inter-node communication. The Elasticsearch CA is distributed only to components that need to establish trusted client connections.
+
+Credentials and private keys are never stored in the repository.
 
 ---
 
@@ -128,221 +108,161 @@ HTTP TLS uses node-specific PKCS#12 keystores, while transport TLS provides encr
 elasticsearch/
 ├── README.md
 ├── config/
-│   ├── es01/
-│   │   └── elasticsearch.yml
-│   ├── es02/
-│   │   └── elasticsearch.yml
-│   └── es03/
-│       └── elasticsearch.yml
+│   ├── es01/elasticsearch.yml
+│   ├── es02/elasticsearch.yml
+│   └── es03/elasticsearch.yml
 ├── docker-compose.es01.yml
 ├── docker-compose.es02.yml
 ├── docker-compose.es03.yml
-└── ilm/
-    ├── observability-ilm-policy.json
+├── ilm/
+│   ├── observability-ilm-policy.json
+│   └── README.md
+└── templates/
+    ├── observability-index-template.json
+    ├── create-rollover-index.sh
     └── README.md
 ```
 
 ---
 
-## ⚙️ Node Configuration
+## ⚙️ Configuration Model
 
-Each node uses the same cluster configuration pattern with its own node identity and certificate files.
+The node configuration follows one common pattern while keeping node identity and certificate references node-specific.
 
-Example:
+Core settings include:
 
 ```yaml
 cluster.name: portfolio-observability
 node.name: es01
 node.roles: [ master, data, ingest ]
-
-network.host: 192.0.2.31
 http.port: 9200
 transport.port: 9300
-
-discovery.seed_hosts:
-  - "192.0.2.31:9300"
-  - "192.0.2.32:9300"
-  - "192.0.2.33:9300"
-
-xpack.monitoring.collection.enabled: true
 xpack.security.enabled: true
+xpack.monitoring.collection.enabled: true
 ```
 
-The other nodes follow the same model with their corresponding node name, address, and certificates.
+Discovery uses the three transport endpoints supplied by the local deployment configuration.
+
+The Compose files use host networking and mount configuration, certificate, data, and snapshot paths from the host.
 
 ---
 
-## 💾 Persistence & Snapshots
+## 💾 Persistence
 
-The Compose deployment keeps Elasticsearch data outside the container:
+Elasticsearch data is kept outside the container filesystem so container replacement does not imply data replacement.
 
 ```text
-/opt/elastic/es01/data      → Elasticsearch data
-/opt/elastic/es01/certs     → node certificates
-/opt/elastic/snapshots      → snapshot repository
+Host data directory
+        │
+        ▼
+/usr/share/elasticsearch/data
+        │
+        ▼
+Persistent Elasticsearch state
 ```
 
-The snapshot repository is exposed to Elasticsearch through:
+The configuration also exposes a repository path inside the container:
 
 ```yaml
 path.repo: ["/mnt/snapshots"]
 ```
 
-This keeps container replacement separate from persistent Elasticsearch data.
+The repository contains the configuration contract only; actual snapshot data remains outside Git.
 
 ---
 
-## 🔄 Index Lifecycle Management
+## 🔄 ILM & Rollover
 
-The implemented lifecycle is intentionally simple:
+The lifecycle is managed by Elasticsearch, not by the Logstash output plugin in this implementation.
 
 ```text
-                ┌─────────────────────┐
-                │         HOT         │
-                │                     │
-                │  10 GB primary      │
-                │  shard OR 1 day     │
-                └──────────┬──────────┘
-                           │
-                       ROLLOVER
-                           │
-                           ▼
-                ┌─────────────────────┐
-                │        WARM         │
-                │                     │
-                │      after 1d       │
-                └──────────┬──────────┘
-                           │
-                        30 days
-                           │
-                           ▼
-                ┌─────────────────────┐
-                │       DELETE        │
-                └─────────────────────┘
+                 Stable write alias
+                         │
+                         ▼
+                 demo-logs-000001
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+          10 GB primary            1 day
+              │                     │
+              └──────────┬──────────┘
+                         ▼
+                      Rollover
+                         │
+                         ▼
+                 demo-logs-000002
+                         │
+                         ▼
+                      Warm
+                         │
+                       30d
+                         ▼
+                      Delete
 ```
 
-| Phase | Current implementation |
+Current policy:
+
+| Phase | Behavior |
 |---|---|
-| **Hot** | Rollover at `10 GB` primary-shard size or `1 day` |
-| **Warm** | Starts after `1 day` |
-| **Delete** | Deletes data after `30 days` |
+| Hot | Rollover at `10 GB` primary-shard size or `1 day` |
+| Warm | Begins after `1 day`; no additional action is defined |
+| Delete | Deletes indices after `30 days` |
 
-Policy: `ilm/observability-ilm-policy.json`
+The index template supplies the lifecycle policy and rollover alias. The bootstrap script creates the first backing index and sets the write flag exactly once. Subsequent rollover generations are managed by ILM.
 
-The lifecycle is designed to work with a stable rollover alias so ingestion clients do not need to know the physical backing-index name.
+See `ilm/README.md` and `templates/README.md` for the operational workflow.
 
 ---
 
-## 🚀 Deployment
+## 🚀 Deployment Sequence
 
 ### 1. Prepare the host
 
-Set the required Linux kernel value on each Elasticsearch host:
+Configure the required Elasticsearch host prerequisites, including the kernel setting used by Elasticsearch:
 
 ```bash
 sudo sysctl -w vm.max_map_count=262144
 ```
 
-Persist it when required:
-
-```bash
-echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-elasticsearch.conf
-sudo sysctl --system
-```
-
 ### 2. Prepare certificates
 
-Use the certificate workflow under:
+Generate the required node certificates using the certificate workflow in:
 
 ```text
 certificates/elasticsearch/
 ```
 
-Each node requires its corresponding HTTP and transport certificate files.
+Do not place generated private material in Git.
 
-### 3. Prepare secrets
-
-Create the local environment file from:
-
-```text
-env/elastic.env.example
-```
-
-Set the required password locally. **Do not commit the real environment file.**
-
-### 4. Start the nodes
-
-Start the nodes sequentially:
+### 3. Prepare local environment values
 
 ```bash
-cd elasticsearch
-set -a; source ../env/elastic.env; set +a
+cp env/elastic.env.example env/elastic.env
+```
 
+Set deployment-specific values locally.
+
+### 4. Start each node
+
+On each Elasticsearch host, run its corresponding Compose file:
+
+```bash
 docker compose -f docker-compose.es01.yml up -d
 ```
 
-Then repeat for `es02` and `es03` on their respective hosts.
+Repeat for the other nodes on their respective hosts.
 
-Check startup:
+### 5. Apply lifecycle configuration
 
-```bash
-docker logs -f es01
-```
+Apply the ILM policy, index template, and bootstrap the initial rollover index in that order.
 
----
+### 6. Connect ingestion
 
-## 🩺 Verify the Cluster
-
-Cluster health:
-
-```bash
-curl --cacert /path/to/ca.crt \
-  -u elastic:<PASSWORD> \
-  "https://<ELASTICSEARCH_HOST>:9200/_cluster/health?pretty"
-```
-
-List nodes:
-
-```bash
-curl --cacert /path/to/ca.crt \
-  -u elastic:<PASSWORD> \
-  "https://<ELASTICSEARCH_HOST>:9200/_cat/nodes?v"
-```
-
-Expected result:
-
-```text
-3 Elasticsearch nodes
-cluster status: green
-```
-
-A newly started cluster can temporarily report `yellow` while replicas are being allocated.
+Logstash writes to the stable alias rather than a physical numbered index.
 
 ---
 
-## 🔎 ILM Verification
-
-Check the lifecycle policy:
-
-```bash
-curl --cacert /path/to/ca.crt \
-  -u elastic:<PASSWORD> \
-  "https://<ELASTICSEARCH_HOST>:9200/_ilm/policy/observability-ilm-policy?pretty"
-```
-
-Check an index's lifecycle state:
-
-```bash
-curl --cacert /path/to/ca.crt \
-  -u elastic:<PASSWORD> \
-  "https://<ELASTICSEARCH_HOST>:9200/<INDEX_NAME>/_ilm/explain?pretty"
-```
-
-These checks are the first place to look when rollover does not happen as expected.
-
----
-
-## 🔧 Operational Checks
+## 🩺 Cluster Verification
 
 ### Cluster health
 
@@ -352,7 +272,7 @@ curl --cacert /path/to/ca.crt \
   "https://<ELASTICSEARCH_HOST>:9200/_cluster/health?pretty"
 ```
 
-### Node status
+### Node membership
 
 ```bash
 curl --cacert /path/to/ca.crt \
@@ -360,7 +280,7 @@ curl --cacert /path/to/ca.crt \
   "https://<ELASTICSEARCH_HOST>:9200/_cat/nodes?v"
 ```
 
-### Index status
+### Indices
 
 ```bash
 curl --cacert /path/to/ca.crt \
@@ -368,88 +288,90 @@ curl --cacert /path/to/ca.crt \
   "https://<ELASTICSEARCH_HOST>:9200/_cat/indices?v"
 ```
 
-### Container logs
+### ILM
 
 ```bash
-docker logs --tail 200 es01
-docker logs --tail 200 es02
-docker logs --tail 200 es03
+curl --cacert /path/to/ca.crt \
+  -u elastic:<PASSWORD> \
+  "https://<ELASTICSEARCH_HOST>:9200/<INDEX_NAME>/_ilm/explain?pretty"
 ```
 
----
-
-## 🔑 Password Operations
-
-Built-in user passwords can be reset from a running Elasticsearch container:
-
-```bash
-docker exec -it es01 bin/elasticsearch-reset-password -u elastic -i
-docker exec -it es01 bin/elasticsearch-reset-password -u kibana_system -a -y
-docker exec -it es01 bin/elasticsearch-reset-password -u logstash_system -a -y
-```
-
-Keep generated passwords outside Git and outside public documentation.
+A healthy deployment should converge on the expected three-node topology. `yellow` can be transient during shard allocation; investigate persistent non-green health before relying on the cluster operationally.
 
 ---
 
 ## 🧯 Troubleshooting Flow
 
 ```text
-                  Cluster problem?
+                 Elasticsearch issue?
                          │
                          ▼
-                 Check cluster health
+                 Cluster health
                          │
-              ┌──────────┴──────────┐
-              │                     │
-           Healthy               Unhealthy
-              │                     │
-              ▼                     ▼
-        Check ILM state       Check node logs
-              │                     │
-              ▼                     ▼
-       Check rollover         Check TLS / certs
-              │                     │
-              ▼                     ▼
-       Check alias/index      Check discovery
+          ┌──────────────┴──────────────┐
+          │                             │
+       Healthy                       Unhealthy
+          │                             │
+          ▼                             ▼
+     Check ILM / alias           Check node logs
+          │                             │
+          ▼                             ▼
+     Check rollover             Check discovery
+          │                             │
+          ▼                             ▼
+   Check backing index          Check TLS / certs
 ```
 
-For rollover problems, inspect these in order:
+For rollover failures, verify in this order:
 
-1. cluster health
-2. index settings
-3. rollover alias
-4. ILM policy
-5. `_ilm/explain`
-6. Elasticsearch logs
+1. ILM policy exists.
+2. Index template is applied.
+3. Rollover alias is configured.
+4. Exactly one backing index has `is_write_index: true`.
+5. `_ilm/explain` reports the expected policy and phase.
+6. The rollover condition has actually been reached.
 
 ---
 
-## 🛡️ Design Principles
+## 🧠 Operational Decisions
 
-| Principle | Implementation |
+| Decision | Implementation |
 |---|---|
-| High availability | 3-node cluster |
+| Cluster size | 3 nodes |
 | Node roles | master + data + ingest |
-| Node communication | TLS |
-| Client communication | HTTPS/TLS |
+| Client transport | HTTPS/TLS |
+| Inter-node transport | TLS |
+| Authentication | Elasticsearch security |
 | Persistence | Host-mounted data |
-| Lifecycle | ILM + rollover |
+| Lifecycle owner | Elasticsearch ILM |
+| Rollover mechanism | Stable alias + ILM |
 | Retention | 30 days |
 | Snapshots | Local repository path |
-| Deployment | Docker Compose |
-| Secret handling | Environment file kept outside Git |
+| Deployment | Docker Compose per host |
+| Secrets | External environment/certificate material |
+| Runtime network dependency | No public registry required |
+
+---
+
+## 🔒 Portfolio Safety
+
+This public repository contains only sanitized configuration contracts. It does not contain:
+
+- production IP addresses
+- production hostnames
+- passwords or tokens
+- private keys
+- environment-specific registry names
+- environment-specific infrastructure identifiers
+
+Replace placeholders only in the local deployment environment.
 
 ---
 
 <div align="center">
 
-### Elasticsearch Data Path
+### Secure Cluster → Stable Alias → ILM Rollover → Retention
 
-`Secure Client` → `HTTPS` → `3-Node Cluster` → `ILM Rollover` → `Warm` → `Delete`
-
-<br>
-
-**Secure. Persistent. Observable. Operationally predictable.**
+**Persistent. Secure. Searchable. Operationally predictable.**
 
 </div>
