@@ -1,312 +1,119 @@
-# Filebeat — Edge Log Ingestion
+<div align="center">
 
-Filebeat is the edge collection layer of this observability platform.
+# 🛰️ Filebeat Edge Ingestion Layer
 
-It runs close to the applications, discovers log files with `filestream`, parses newline-delimited JSON, enriches events at the input level, and publishes them to Kafka. Kafka then provides the durable transport boundary between edge collection and downstream processing.
+### Filestream • NDJSON • Persistent Registry • Kafka • SASL/PLAIN
 
-This directory represents the implemented Filebeat design: isolated inputs, persistent registry state, high-frequency file discovery, structured parsing, Kafka authentication, and containerized deployment for air-gapped environments.
+![Filebeat](https://img.shields.io/badge/Filebeat-9.0.1-black?logo=elastic)
+![Input](https://img.shields.io/badge/Input-Filestream-blue?logo=elastic)
+![Transport](https://img.shields.io/badge/Transport-Kafka-orange?logo=apachekafka)
+![Security](https://img.shields.io/badge/Security-SASL%2FPLAIN-blue?logo=apachekafka)
+![Deployment](https://img.shields.io/badge/Deployment-Air--gapped-success)
+
+</div>
 
 ---
 
-## Architecture
+## 🧭 Architecture at a Glance
 
 ```text
-Application
-    |
-    | JSON log files
-    v
-+-----------+
-| Filebeat  |
-| filestream|
-+-----+-----+
-      |
-      | SASL/PLAIN
-      v
-+-------------+
-| Kafka KRaft |
-+------+------+ 
-       |
-       v
-   Logstash
-       |
-       v
- Elasticsearch
+                    📦 Application Logs
+                           │
+                           │ JSON / NDJSON files
+                           ▼
+                 ┌──────────────────────┐
+                 │      🛰️ Filebeat     │
+                 │                      │
+                 │  🔍 Filestream       │
+                 │  🧩 NDJSON Parser    │
+                 │  🏷️ Input Processors │
+                 │  💾 Registry State   │
+                 └──────────┬───────────┘
+                            │
+                            │ 🔐 SASL/PLAIN
+                            ▼
+                 ┌──────────────────────┐
+                 │     📨 Kafka KRaft    │
+                 │                      │
+                 │  3 Controllers       │
+                 │  3 Brokers           │
+                 └──────────┬───────────┘
+                            │
+                            │ Consumer Group
+                            ▼
+                 ┌──────────────────────┐
+                 │     🚚 Logstash       │
+                 │  Kafka → Elasticsearch│
+                 └──────────┬───────────┘
+                            │
+                            ▼
+                 ┌──────────────────────┐
+                 │   🔎 Elasticsearch    │
+                 └──────────┬───────────┘
+                            │
+                            ▼
+                 ┌──────────────────────┐
+                 │      📊 Kibana        │
+                 └──────────────────────┘
 ```
 
-The boundary is intentional:
-
-- Filebeat owns **file discovery, reading, parsing and source enrichment**.
-- Kafka owns **transport and buffering between collection and processing**.
-- Logstash owns **downstream processing and Elasticsearch delivery**.
-
-Filebeat does not contain Elasticsearch output configuration because that responsibility belongs to the downstream processing layer.
+> **Design goal:** Filebeat is the lightweight edge collector. It owns file discovery, reading, structured parsing, source-specific enrichment, and authenticated publication to Kafka. Kafka provides the transport boundary for downstream processing.
 
 ---
 
-## Implementation at a Glance
+## 🧩 Implementation at a Glance
 
-| Area | Implementation |
+| Capability | Implementation |
 |---|---|
-| Version | Filebeat 9.0.1 |
-| Input | `filestream` |
-| Log format | NDJSON / JSON Lines |
-| Input isolation | One configuration file per source |
-| File discovery | 1 second scanner interval |
-| Harvester limit | Unlimited (`0`) |
-| Read buffer | 4 MiB |
-| Initial backoff | 100 ms |
-| Maximum backoff | 1 second |
-| State | Persistent Filebeat registry |
-| Output | Kafka |
-| Kafka authentication | SASL/PLAIN |
-| Kafka protocol | `SASL_PLAINTEXT` example |
-| Deployment | Docker Compose |
-| Target environment | Air-gapped / offline capable |
+| 🛰️ Filebeat | `9.0.1` |
+| 🔍 Input | `filestream` |
+| 📄 Format | NDJSON / JSON Lines |
+| 🧱 Input isolation | One source configuration per file |
+| ⚡ Scanner interval | `1s` |
+| 🧵 Harvester limit | `0` / unlimited |
+| 📦 Harvester buffer | `4194304` bytes / 4 MiB |
+| 🔁 Initial backoff | `100ms` |
+| 🔁 Maximum backoff | `1s` |
+| 💾 Registry | Persistent Filebeat state |
+| 📨 Output | Kafka |
+| 🔐 Authentication | SASL/PLAIN |
+| 🔒 Example protocol | `SASL_PLAINTEXT` |
+| 🐳 Deployment | Docker Compose |
+| 📴 Target environment | Air-gapped / offline capable |
 
 ---
 
-## Why `filestream`?
+## 🧠 Responsibility Boundary
 
-The implementation uses `filestream` rather than treating log files as static inputs.
-
-This matters in environments where applications continuously create, append to, rotate, rename, and replace files. Filebeat needs to maintain file identity and offsets while the filesystem changes around it.
-
-The design therefore combines:
-
-1. `filestream` for file lifecycle handling.
-2. A persistent registry for offsets and file state.
-3. Short discovery and retry intervals for fast reaction to new data.
-4. Explicit input-level processors so source-specific metadata stays isolated.
-
----
-
-## Configuration Isolation
-
-The configuration is deliberately split into two layers.
+Filebeat deliberately owns only the edge-ingestion responsibilities:
 
 ```text
-filebeat/config/filebeat.yml
-        |
-        | shared runtime + output
-        v
-filebeat/inputs/*.yml
-        |
-        | source-specific paths
-        | parsers
-        | processors
-        v
-     Events
+📦 Application
+      │
+      │ files
+      ▼
+🛰️ Filebeat
+      │
+      ├── 🔍 discover files
+      ├── 📖 harvest content
+      ├── 🧩 parse NDJSON
+      ├── 🏷️ enrich events
+      └── 📨 publish to Kafka
+                  │
+                  ▼
+             📨 Kafka
+                  │
+                  ▼
+             🚚 Logstash
 ```
 
-`config/filebeat.yml` contains the shared runtime and Kafka output configuration.
+The downstream Elasticsearch output is not configured in Filebeat. That responsibility belongs to Logstash.
 
-Individual log sources live under `inputs/` and are loaded through Filebeat's configuration loader.
-
-Current example:
-
-```text
-inputs/
-└── demo-application-logs.yml
-```
-
-A new source can be added independently without turning the main Filebeat configuration into a large monolithic file.
-
-For example:
-
-```text
-inputs/
-├── demo-application-logs.yml
-├── demo-platform-events.yml
-└── demo-audit-events.yml
-```
-
-The filenames above are portfolio examples only.
+This separation keeps the edge collector independent from storage, indexing, and dashboard concerns.
 
 ---
 
-## Input Processing Pipeline
-
-The implemented input follows this sequence:
-
-```text
-Log file
-   |
-   v
-filestream discovery
-   |
-   v
-File harvester
-   |
-   v
-NDJSON parser
-   |
-   v
-Input-scoped processors
-   |
-   v
-Kafka output
-```
-
-### NDJSON parsing
-
-The example input uses the NDJSON parser with decoded fields written into the event.
-
-Malformed records are retained with an error field rather than being silently discarded. This makes parsing problems visible during operational investigation.
-
-### Input-scoped processors
-
-Processors are attached to the individual input rather than placed globally.
-
-That is an important design choice when several applications share the same Filebeat instance: metadata belonging to one source should not accidentally appear on another source.
-
----
-
-## Filestream Performance Tuning
-
-The example includes explicit tuning for environments where log files are generated frequently.
-
-| Setting | Value | Reason |
-|---|---:|---|
-| `prospector.scanner.check_interval` | `1s` | Discover new or changed files quickly |
-| `harvester_limit` | `0` | Avoid an artificial global harvester ceiling |
-| `harvester_buffer_size` | `4194304` | Provide a larger read buffer for busy files |
-| `backoff.init` | `100ms` | Recover quickly from temporary read conditions |
-| `backoff.max` | `1s` | Bound retry delay |
-
-These settings are operational choices, not universal defaults. They should be adjusted according to file volume, event size, storage performance, and available resources.
-
----
-
-## File Rotation and Registry State
-
-File rotation is one of the important operational concerns for this layer.
-
-A typical lifecycle is:
-
-```text
-Application writes
-       |
-       v
- active.log
-       |
-       | rotation / rename
-       v
- archived file
-       |
-       v
- new active.log
-```
-
-Filebeat must distinguish the files correctly and retain the appropriate read position.
-
-The registry therefore needs persistent storage. If the registry disappears when the container is recreated, Filebeat may need to reconstruct file state and can potentially reread data.
-
-The Docker deployment mounts the Filebeat data directory as persistent storage for this reason.
-
----
-
-## Permissions and Container Boundaries
-
-A file being visible on the host does not automatically mean that Filebeat can read it inside the container.
-
-The complete access path is:
-
-```text
-Host filesystem
-      |
-      | bind mount
-      v
-Container filesystem
-      |
-      | Unix permissions / ownership
-      v
-Filebeat process
-```
-
-When a log file is rotated, its ownership or mode can also change. A previously readable file can therefore become unreadable without any Filebeat configuration change.
-
-When investigating a harvesting problem, verify both:
-
-```bash
-ls -lah /var/log/demo-app/
-```
-
-and from inside the container:
-
-```bash
-docker exec filebeat01 sh -c 'ls -lah /var/log/demo-app/'
-```
-
-This distinction is especially important when the application and Filebeat run with different Unix identities.
-
----
-
-## Kafka Output
-
-Filebeat publishes events to Kafka rather than directly to Elasticsearch.
-
-```text
-Filebeat
-   |
-   | authenticated producer
-   v
-Kafka topic
-   |
-   v
-Logstash consumer group
-```
-
-The example uses:
-
-- SASL authentication
-- PLAIN mechanism
-- a dedicated Filebeat Kafka identity
-- an explicitly configured topic
-- credentials supplied through the local environment
-
-The example uses `SASL_PLAINTEXT`. This provides authentication but **does not provide encryption in transit**. If the Kafka network is not trusted, use a TLS-enabled listener and configure the corresponding Filebeat TLS settings.
-
-The Filebeat producer configuration is intentionally separate from Elasticsearch delivery. This keeps the edge collector independent of the storage and processing layer.
-
----
-
-## Deployment Model
-
-The component is containerized with Docker Compose and designed so the runtime values remain outside the public repository.
-
-```text
-env/filebeat.env.example
-          |
-          | local values
-          v
-   docker-compose
-          |
-          v
-      Filebeat
-          |
-          v
-       Kafka
-```
-
-Create the local environment file:
-
-```bash
-cp env/filebeat.env.example env/filebeat.env
-```
-
-Replace the placeholders locally. Do not commit the resulting environment file.
-
-Start the example deployment:
-
-```bash
-docker compose -f filebeat/docker-compose.filebeat01.yml up -d
-```
-
-In an air-gapped environment, the required Filebeat image should be available locally or in the organization's private registry before deployment.
-
----
-
-## Repository Layout
+## 📁 Repository Layout
 
 ```text
 filebeat/
@@ -321,25 +128,300 @@ env/
 └── filebeat.env.example
 ```
 
-The separation reflects the deployment model rather than being only a documentation convention.
+The configuration is intentionally split between shared runtime settings and source-specific inputs.
 
 ---
 
-## Verification
+## 🧱 Configuration Model
 
-### 1. Check the container
+```text
+              filebeat.yml
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+        ▼                     ▼
+   ⚙️ Runtime              📨 Kafka Output
+        │
+        ▼
+      inputs/
+        │
+   ┌────┴─────┐
+   ▼          ▼
+Source A    Source B
+   │          │
+   └────┬─────┘
+        ▼
+      Events
+```
+
+`config/filebeat.yml` provides the shared configuration loader and Kafka output.
+
+Individual sources live under `inputs/` so paths, parsers, and processors remain isolated.
+
+### Why isolate inputs?
+
+- 🧩 Source-specific behavior stays local.
+- 🏷️ Processors cannot unintentionally enrich unrelated sources.
+- 📁 New log sources can be added without expanding one monolithic configuration.
+- 🔎 Troubleshooting becomes easier because each source has a clear configuration boundary.
+
+---
+
+## 🔍 Filestream Design
+
+The implementation uses `filestream` for continuously changing application log files.
+
+```text
+📄 active.log
+     │
+     │ write
+     ▼
+🔍 Filestream scanner
+     │
+     ▼
+🧵 Harvester
+     │
+     ▼
+🧩 NDJSON parser
+     │
+     ▼
+🏷️ Input processors
+     │
+     ▼
+📨 Kafka producer
+```
+
+This model is suited to environments where applications create, append, rotate, rename, and replace log files.
+
+---
+
+## ⚡ Performance Tuning
+
+The example configuration explicitly tunes file discovery and harvesting for responsive ingestion.
+
+| Setting | Value | Purpose |
+|---|---:|---|
+| `prospector.scanner.check_interval` | `1s` | Detect new or changed files quickly |
+| `harvester_limit` | `0` | No artificial global harvester ceiling |
+| `harvester_buffer_size` | `4194304` | 4 MiB read buffer |
+| `backoff.init` | `100ms` | Fast initial retry |
+| `backoff.max` | `1s` | Limits retry delay |
+
+> These are implementation-specific tuning values, not universal recommendations. Capacity planning should still consider file count, event size, filesystem performance, CPU, and memory.
+
+---
+
+## 🧩 Structured Event Processing
+
+The example source consumes newline-delimited JSON:
+
+```text
+{"timestamp":"...","level":"INFO","message":"..."}
+{"timestamp":"...","level":"WARN","message":"..."}
+{"timestamp":"...","level":"ERROR","message":"..."}
+```
+
+The NDJSON parser is configured to:
+
+- decode structured fields into the event;
+- overwrite decoded keys where configured;
+- add an error field when parsing fails.
+
+### 🏷️ Processor Scope
+
+Processors are defined **inside the input**.
+
+```text
+Input A
+ ├── parser
+ └── processors
+
+Input B
+ ├── parser
+ └── processors
+```
+
+This is intentional. Source metadata should belong to the source that generated the event rather than being applied globally to every Filebeat event.
+
+---
+
+## 🔐 Kafka Security Model
+
+Filebeat publishes to Kafka using a dedicated client identity.
+
+```text
+                 🛰️ Filebeat
+                      │
+                      │ username + password
+                      │ SASL/PLAIN
+                      ▼
+              ┌─────────────────┐
+              │ 🔐 Kafka Auth   │
+              └────────┬────────┘
+                       │
+                       ▼
+              ┌─────────────────┐
+              │ 🛡️ Kafka ACLs   │
+              └────────┬────────┘
+                       │
+                    ALLOW / DENY
+                       │
+                       ▼
+                 📨 Log Topic
+```
+
+The example uses:
+
+```text
+security.protocol = SASL_PLAINTEXT
+sasl.mechanism    = PLAIN
+principal         = filebeat
+```
+
+**Important:** `SASL_PLAINTEXT` authenticates the client but does **not** encrypt traffic. Use a TLS-enabled Kafka listener when confidentiality in transit is required.
+
+The Filebeat identity should receive only the Kafka permissions required to publish its configured stream.
+
+---
+
+## 💾 Registry & State Persistence
+
+Filebeat's registry is part of the ingestion reliability model.
+
+```text
+📄 Log file
+    │
+    ▼
+🛰️ Filebeat
+    │
+    ├──────────────► 📨 Kafka
+    │
+    ▼
+💾 Registry
+    │
+    └── file identity + read position
+```
+
+The registry must survive container recreation.
+
+If state is lost, Filebeat may need to rediscover files and reconstruct offsets, which can lead to rereading data depending on the file state and configuration.
+
+For this reason, the deployment mounts the Filebeat data directory persistently.
+
+---
+
+## 🔄 File Rotation & Permissions
+
+Log rotation introduces two independent concerns: **file identity** and **filesystem access**.
+
+```text
+        Application
+            │
+            ▼
+       active.log
+            │
+        rotation
+            ▼
+      archived.log
+            │
+            └──────► new active.log
+```
+
+A file visible on the host is not necessarily readable by the Filebeat process inside the container.
+
+```text
+Host filesystem
+      │
+      │ bind mount
+      ▼
+Container filesystem
+      │
+      │ ownership / mode
+      ▼
+Filebeat process
+```
+
+When investigating harvesting failures, check both the host-side and container-side file permissions.
+
+Example:
+
+```bash
+ls -lah /var/log/demo-app/
+```
+
+and:
+
+```bash
+docker exec filebeat01 sh -c 'ls -lah /var/log/demo-app/'
+```
+
+Rotation scripts should also be checked for changes to ownership or mode.
+
+---
+
+## 📴 Air-Gapped Deployment
+
+The component is designed for environments where runtime internet access is unavailable.
+
+```text
+          📴 Offline environment
+                   │
+        ┌──────────┴──────────┐
+        ▼                     ▼
+   🐳 Filebeat image     ⚙️ Configuration
+        │                     │
+        └──────────┬──────────┘
+                   ▼
+              🛰️ Filebeat
+                   │
+                   ▼
+              📨 Kafka
+```
+
+Prepare the required Filebeat image before deployment and make it available from the local image cache or approved private registry.
+
+Environment-specific values remain outside the public repository.
+
+---
+
+## 🚀 Deployment
+
+### 1. Prepare local environment values
+
+```bash
+cp env/filebeat.env.example env/filebeat.env
+```
+
+Replace the `CHANGE_ME_*` and infrastructure placeholders locally. Never commit the resulting environment file.
+
+### 2. Prepare the mounted log directory
+
+The example input expects:
+
+```text
+/var/log/demo-app/*.log
+```
+
+Ensure the host directory is mounted into the container and readable by the Filebeat process.
+
+### 3. Start Filebeat
+
+```bash
+docker compose -f filebeat/docker-compose.filebeat01.yml up -d
+```
+
+### 4. Inspect the service
 
 ```bash
 docker ps --filter name=filebeat01
-```
-
-### 2. Inspect runtime logs
-
-```bash
 docker logs --tail 200 filebeat01
 ```
 
-### 3. Validate the configuration
+---
+
+## 🔎 Verification
+
+### Configuration
 
 ```bash
 docker run --rm \
@@ -349,197 +431,179 @@ docker run --rm \
   filebeat test config -e
 ```
 
-### 4. Verify file visibility
+### File visibility
 
 ```bash
 docker exec filebeat01 sh -c 'ls -lah /var/log/demo-app/'
 ```
 
-### 5. Verify the transport path
-
-After writing a test JSON record to the mounted application directory, verify that Filebeat reports successful publishing and that the configured Kafka topic receives the event.
-
-The complete verification path is:
+### End-to-end path
 
 ```text
-file exists
-    |
-    v
-Filebeat discovers it
-    |
-    v
-Filebeat parses it
-    |
-    v
-Kafka accepts it
-    |
-    v
-Logstash consumes it
-    |
-    v
-Elasticsearch stores it
+❶ 📄 Application writes JSON
+          ↓
+❷ 🔍 Filebeat discovers file
+          ↓
+❸ 🧵 Harvester reads records
+          ↓
+❹ 🧩 NDJSON parser decodes event
+          ↓
+❺ 🏷️ Input processors enrich event
+          ↓
+❻ 🔐 Kafka authentication succeeds
+          ↓
+❼ 📨 Kafka accepts event
+          ↓
+❽ 🚚 Logstash consumes event
+          ↓
+❾ 🔎 Elasticsearch indexes event
+          ↓
+❿ 📊 Kibana visualizes data
 ```
 
 ---
 
-## Troubleshooting Guide
-
-### File exists but Filebeat does not discover it
-
-Check:
-
-1. the path inside the container;
-2. the `filestream` configuration;
-3. whether the input file is enabled;
-4. Filebeat logs for scanner errors;
-5. whether the file is actually covered by the configured glob.
-
-### File is discovered but cannot be harvested
-
-Check ownership and permissions on both sides of the container boundary.
-
-A particularly important case is file rotation: the application may create the replacement file with different permissions from the original.
-
-### Registry appears empty or state is lost
-
-Check that the Filebeat data directory is backed by persistent storage and that the container is not recreating an empty volume.
-
-### Events appear duplicated after restart
-
-Investigate registry persistence first. Losing file state can cause Filebeat to reconsider files whose offsets were previously known.
-
-### Kafka authentication fails
-
-Check the local Kafka connection contract:
+## 🧰 Troubleshooting Checklist
 
 ```text
-bootstrap servers
-username
-password
-SASL mechanism
-security protocol
-topic
+📄 File exists?
+      ↓
+🔍 Filebeat discovered it?
+      ↓
+🧵 Harvester can read it?
+      ↓
+🧩 NDJSON parsing succeeds?
+      ↓
+🏷️ Input processors execute?
+      ↓
+🔐 Kafka authentication succeeds?
+      ↓
+🛡️ Kafka ACL permits WRITE?
+      ↓
+📨 Event reaches topic?
+      ↓
+🚚 Logstash consumes it?
+      ↓
+🔎 Elasticsearch stores it?
 ```
 
-Do not place real credentials into the repository while troubleshooting.
+### File exists but is not discovered
 
-### Kafka is unavailable
+Check the mounted path, input enablement, configured glob, and Filebeat scanner logs.
 
-Monitor Filebeat output errors and the resulting event backlog. Kafka is the downstream transport boundary, but Filebeat should not be treated as an unlimited persistent queue.
+### File is discovered but not harvested
+
+Check ownership, permissions, mount visibility, and permissions after rotation.
+
+### Registry state is lost
+
+Check the persistent Filebeat data mount and verify that the container is not starting against a new empty volume.
+
+### Duplicate events after restart
+
+Check registry persistence first. Loss of file state can cause previously processed files to be reconsidered.
+
+### Kafka authentication failure
+
+Verify the local bootstrap servers, username, password, SASL mechanism, security protocol, and topic configuration without exposing credentials in logs or Git.
+
+### Kafka unavailable
+
+Inspect Filebeat output errors and Kafka health. Filebeat should not be treated as an unlimited persistent queue during an extended downstream outage.
 
 ---
 
-## Security Model
-
-The Filebeat security model follows least privilege at the Kafka boundary.
+## 🛡️ Security Rules
 
 ```text
-Filebeat
-   |
-   | dedicated identity
-   | SASL authentication
-   v
-Kafka
-   |
-   | topic-level authorization
-   v
-Application-log stream
+                 📁 Git Repository
+                       │
+             ┌─────────┴─────────┐
+             │                   │
+             ▼                   ▼
+          ✅ SAFE              ❌ NEVER
+             │                   │
+       placeholders         real passwords
+       examples             private keys
+       templates             production certs
+       documentation         access tokens
 ```
 
-Security rules for the public example:
+Operational rules:
 
-- credentials are supplied outside Git;
-- no private keys are stored in this directory;
-- the Filebeat Kafka identity should only have the permissions required for publishing;
-- use TLS when Kafka traffic requires confidentiality;
-- keep host filesystem access limited to the log directories Filebeat actually needs.
+- 🔑 Keep credentials in local ignored environment/secret files.
+- 🛡️ Use a dedicated Kafka principal for Filebeat.
+- 📜 Grant only the required topic permissions.
+- 🔒 Use TLS when transport confidentiality is required.
+- 📁 Limit host mounts to required log directories.
+- 💾 Persist the Filebeat registry.
 
 ---
 
-## Operational Decisions
+## 📋 Operational Checklist
 
-| Decision | Why |
+| Check | Expected |
 |---|---|
-| `filestream` | Better fit for actively changing and rotated log files |
-| Isolated input files | Keeps source-specific behavior maintainable |
-| Input-scoped processors | Prevents cross-source metadata contamination |
-| NDJSON parser | Handles structured application log records directly |
-| 1-second discovery | Reduces detection latency for newly generated files |
-| 4 MiB harvester buffer | Supports higher-volume file reads |
-| Short backoff | Reduces recovery latency |
-| Persistent registry | Preserves file identity and offsets across restarts |
-| Kafka output | Decouples edge collection from downstream processing |
-| SASL/PLAIN | Provides authenticated Kafka access in the example deployment |
-| External environment file | Keeps credentials and deployment values out of Git |
-| Docker Compose | Matches the implemented host-based deployment model |
+| Filebeat container | Running |
+| Input configuration | Enabled and loaded |
+| Log path | Mounted and readable |
+| Filestream scanner | `1s` |
+| Registry | Persistent |
+| NDJSON parser | Enabled |
+| Processors | Input-scoped |
+| Kafka authentication | SASL/PLAIN |
+| Kafka authorization | Dedicated producer permissions |
+| Output topic | Configured explicitly |
+| Credentials | External to Git |
 
 ---
 
-## Air-Gapped Deployment Considerations
+## 🎯 Portfolio Scope
 
-The component does not depend on internet access during normal runtime.
+This component demonstrates the implemented Filebeat responsibilities:
 
-For an offline deployment, prepare the Filebeat image and required configuration artifacts before deployment:
+- 🛰️ Filestream-based edge collection
+- 🔍 High-frequency file discovery
+- 📦 Tuned harvesting
+- 🧩 NDJSON parsing
+- 🏷️ Input-scoped processors
+- 💾 Persistent registry state
+- 🔄 File rotation considerations
+- 🔐 Kafka SASL/PLAIN authentication
+- 🛡️ Least-privilege producer access
+- 🐳 Docker Compose deployment
+- 📴 Air-gapped operational design
+
+No unsupported cloud, Kubernetes, or orchestration claims are included in this component.
+
+---
+
+## 🔗 Related Components
 
 ```text
-Offline preparation
-        |
-        v
-Container image + configuration
-        |
-        v
-Private/local image source
-        |
-        v
-Filebeat host
-        |
-        v
-Kafka cluster
+🛰️ Filebeat
+      │
+      ▼
+📨 Kafka KRaft
+      │
+      ▼
+🚚 Logstash
+      │
+      ▼
+🔎 Elasticsearch
+      │
+      ▼
+📊 Kibana
 ```
 
-The repository therefore stores configuration templates and deployment definitions, while environment-specific values and private artifacts remain outside Git.
+See the corresponding component READMEs for the Kafka, Logstash, Elasticsearch, and Kibana implementation details.
 
 ---
 
-## Portfolio Scope
+<div align="center">
 
-This component intentionally demonstrates the parts of Filebeat that are actually used by the platform:
+### 🛰️ Filebeat → 📨 Kafka → 🚚 Logstash → 🔎 Elasticsearch → 📊 Kibana
 
-- edge file collection;
-- filestream-based ingestion;
-- structured JSON parsing;
-- source-specific processors;
-- persistent registry handling;
-- file rotation considerations;
-- Kafka authentication;
-- Docker-based deployment;
-- air-gapped operational design;
-- troubleshooting of real ingestion failure modes.
+**Fast collection. Structured events. Persistent state. Authenticated transport.**
 
-It does not claim integrations or orchestration platforms that are outside this implementation.
-
----
-
-## Related Components
-
-```text
-Filebeat
-   |
-   v
-Kafka KRaft
-   |
-   v
-Logstash
-   |
-   v
-Elasticsearch
-   |
-   v
-Kibana
-```
-
-See the component READMEs for the corresponding Kafka, Logstash, Elasticsearch, and Kibana implementation details.
-
----
-
-**Filebeat 9.0.1 — edge collection, structured parsing, authenticated transport, and operationally persistent state.**
+</div>
