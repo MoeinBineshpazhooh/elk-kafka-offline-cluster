@@ -1,34 +1,55 @@
-# Host Layout Example (IPs / Roles)
+# Host Layout Example
 
-This is an example layout for a small offline cluster.
-Adjust to your environment.
+This is a topology template only. No environment-specific addresses are included.
 
 ## Elasticsearch
-- 10.10.4.101: es01
-- 10.10.4.102: es02
-- 10.10.4.103: es03
+
+| Node | Address |
+|---|---|
+| es01 | `<ES01_IP>` |
+| es02 | `<ES02_IP>` |
+| es03 | `<ES03_IP>` |
 
 ## Kibana
-- 10.10.4.111: kibana01
-- 10.10.4.112: kibana02
+
+| Node | Address |
+|---|---|
+| kibana01 | `<KIBANA01_IP>` |
+| kibana02 | `<KIBANA02_IP>` |
 
 ## Logstash
-- 10.10.4.121: logstash01
-- 10.10.4.122: logstash02
+
+| Node | Address |
+|---|---|
+| logstash01 | `<LOGSTASH01_IP>` |
+| logstash02 | `<LOGSTASH02_IP>` |
 
 ## Kafka (KRaft)
-Controllers:
-- 10.10.4.141: controller01
-- 10.10.4.142: controller02
-- 10.10.4.143: controller03
 
-Brokers:
-- 10.10.4.131: broker01 (9092)
-- 10.10.4.132: broker02 (9092)
+### Controllers
 
-## Optional UI host
-- 10.10.4.150: ui (AKHQ:8080, Kafka UI:8081)
+| Node | Address |
+|---|---|
+| controller01 | `<CONTROLLER01_IP>` |
+| controller02 | `<CONTROLLER02_IP>` |
+| controller03 | `<CONTROLLER03_IP>` |
+
+### Brokers
+
+| Node | Address |
+|---|---|
+| broker01 | `<BROKER01_IP>` |
+| broker02 | `<BROKER02_IP>` |
+| broker03 | `<BROKER03_IP>` |
+
+## Optional UI Host
+
+- Address: `<UI_HOST_IP>`
+- AKHQ: `8080`
+- Kafka UI: `8081`
 
 ## Notes
-- This repo uses host networking for simplicity in offline environments.
-- Ensure firewall rules allow required ports within your private network.
+
+- Replace placeholders locally with the addresses used by the deployment.
+- This repository uses host networking in the Compose examples.
+- Keep environment-specific inventory files outside Git.
