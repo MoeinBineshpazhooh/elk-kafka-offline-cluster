@@ -1,0 +1,24 @@
+- type: filestream
+  id: demo-application-logs
+  enabled: true
+  paths:
+    - /var/log/demo-app/*.log
+
+  prospector.scanner.check_interval: 1s
+  harvester_limit: 0
+  harvester_buffer_size: 4194304
+  backoff.init: 100ms
+  backoff.max: 1s
+
+  parsers:
+    - ndjson:
+        target: ""
+        overwrite_keys: true
+        add_error_key: true
+
+  processors:
+    - add_fields:
+        target: service
+        fields:
+          source: demo-application
+          environment: portfolio
