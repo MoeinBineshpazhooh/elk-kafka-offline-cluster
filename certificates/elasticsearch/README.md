@@ -1,57 +1,75 @@
 <div align="center">
 
-# 🔐 Elasticsearch TLS Certificates
+# 🔐 Elasticsearch TLS Certificate Layer
 
-### Certificate Workflow for HTTP and Transport Security
+### CA → Node Certificates → Elasticsearch → Trusted Clients
 
-**CA → Node Certificates → Elasticsearch → Kibana / Logstash Trust**
+![Security](https://img.shields.io/badge/Security-TLS-blue)
+![Certificates](https://img.shields.io/badge/Certificates-PKCS%2312-success)
+![Deployment](https://img.shields.io/badge/Deployment-Air--gapped-orange)
 
 </div>
 
 ---
 
-## 🧭 Purpose
-
-This directory contains the certificate-generation workflow for the Elasticsearch cluster.
-
-The goal is to establish two independent TLS trust paths:
+## 🧭 Architecture at a Glance
 
 ```text
-Client traffic
-─────────────
-Logstash / Kibana / Admin Client
-             │
-             │ HTTPS + TLS
-             ▼
-      Elasticsearch HTTP
-
-Node traffic
-────────────
-ES01 ◄──── TLS ────► ES02
- │                    │
- └──────── TLS ──────► ES03
+                 🔐 Local CA
+                     │
+          ┌──────────┼──────────┐
+          ▼          ▼          ▼
+        ES01       ES02       ES03
+          │          │          │
+          └──── TLS trust ──────┘
+                     │
+             ┌───────┴────────┐
+             ▼                ▼
+          Logstash          Kibana
+          CA trust          CA trust
 ```
 
-The repository stores the generation inputs and scripts only. Generated certificates and private keys remain outside Git.
+---
+
+## 🧩 Implementation at a Glance
+
+| Capability | Implementation |
+|---|---|
+| Certificate tool | `elasticsearch-certutil` |
+| Node identities | ES01 / ES02 / ES03 |
+| HTTP security | TLS |
+| Transport security | TLS |
+| Certificate format | PKCS#12 node material |
+| Trust anchor | Local CA |
+| Distribution | Controlled/offline transfer |
+| Private keys | Outside Git |
 
 ---
 
-## 🎯 What Is Generated
+## 🧠 Responsibility Boundary
 
-The workflow uses `elasticsearch-certutil` to create:
+This directory owns **certificate generation inputs and workflow**.
 
-- a local certificate authority (CA)
-- node transport certificates
-- node HTTP certificates
-- certificate material suitable for the Elasticsearch nodes
+```text
+instances.yml
+      │
+      ▼
+certificate generation
+      │
+      ├── CA
+      ├── ES01 certificate
+      ├── ES02 certificate
+      └── ES03 certificate
+             │
+             ▼
+      controlled distribution
+```
 
-The CA certificate can also be distributed to trusted clients such as Kibana and Logstash.
-
-The CA private key must remain protected on the certificate-generation system.
+The runtime services consume the generated certificates; they do not generate them during normal startup.
 
 ---
 
-## 📁 Files
+## 📁 Repository Layout
 
 ```text
 certificates/elasticsearch/
@@ -60,95 +78,80 @@ certificates/elasticsearch/
 └── generate-certs.sh
 ```
 
-### `instances.yml`
-
-Defines the certificate identities for the Elasticsearch nodes. Public values are placeholders and must be replaced locally.
-
-### `generate-certs.sh`
-
-Runs the certificate-generation workflow using the pinned Elasticsearch image/tooling.
-
-### Generated output
-
-The script creates generated material locally. That output is intentionally not part of the public repository.
+Generated certificates and private keys are deliberately excluded from the repository.
 
 ---
 
 ## 🔑 Certificate Model
 
-Each Elasticsearch node needs certificate identities appropriate for the names clients and peer nodes use to reach it.
+Each Elasticsearch node receives node-specific certificate material while the CA provides the trust relationship.
 
 ```text
-                Local CA
-                   │
-        ┌──────────┼──────────┐
-        ▼          ▼          ▼
-      ES01       ES02       ES03
-   HTTP + TLS  HTTP + TLS  HTTP + TLS
-   Transport  Transport   Transport
+                 Local CA
+                    │
+        ┌───────────┼───────────┐
+        ▼           ▼           ▼
+      ES01         ES02        ES03
+  HTTP + TLS   HTTP + TLS   HTTP + TLS
+  Transport    Transport    Transport
 ```
 
-The same CA establishes the trust relationship, while each node receives its own certificate material.
+Clients such as Logstash and Kibana need the CA certificate when validating Elasticsearch's server certificate. The CA private key is not a client artifact.
 
 ---
 
 ## 🚀 Generation Workflow
 
-Certificate generation should be performed on a controlled system before the air-gapped deployment.
-
-### 1. Prepare the identities
-
-Review:
+### 1. Review identities
 
 ```text
 instances.yml
 ```
 
-Replace only the local placeholders required by the target deployment. Do not commit those values back to Git.
+Replace local placeholders only on the controlled deployment system.
 
-### 2. Generate certificates
+### 2. Generate
 
 ```bash
 cd certificates/elasticsearch
 ./generate-certs.sh
 ```
 
-### 3. Inspect the generated output
+### 3. Verify
 
-Confirm that the expected CA and node-specific certificate files were created before distribution.
+Confirm the expected CA and node-specific certificate material exists before transfer.
 
 ### 4. Distribute by trust requirement
 
-The Elasticsearch nodes receive their own node certificate material.
-
-Kibana and Logstash normally need the CA certificate to validate Elasticsearch's server certificate.
-
-Do not distribute the CA private key to application or observability nodes.
+```text
+ES nodes     → own node certificate material
+Kibana       → CA certificate
+Logstash     → CA certificate
+CA signing key → controlled signing system only
+```
 
 ---
 
 ## 🛡️ Private-Key Handling
 
-The most sensitive artifact in this workflow is the CA private key.
-
 ```text
 CA private key
-     │
-     ├── keep on controlled signing system
-     └── never commit to Git
+      │
+      ├── controlled signing system
+      └── ❌ never Git
+
+Node private keys
+      │
+      └── protected deployment secret
 ```
 
-Node private keys are also deployment secrets and must be protected with filesystem permissions and appropriate operational controls.
-
-The public repository contains no generated private material.
+The public repository contains generation logic, not generated private material.
 
 ---
 
 ## 🔎 Verification
 
-Before starting Elasticsearch, verify the certificate files exist at the local paths expected by the Compose configuration.
-
-For certificate inspection, use OpenSSL locally:
+Inspect a local PKCS#12 certificate:
 
 ```bash
 openssl pkcs12 -info \
@@ -156,9 +159,7 @@ openssl pkcs12 -info \
   -noout
 ```
 
-Validate the certificate identity and CA chain according to the hostname/address used by the deployment.
-
-After Elasticsearch starts, verify the HTTPS endpoint using the CA certificate:
+Verify the Elasticsearch HTTPS endpoint with the CA:
 
 ```bash
 curl --cacert /path/to/ca.crt \
@@ -166,63 +167,69 @@ curl --cacert /path/to/ca.crt \
   "https://<ELASTICSEARCH_HOST>:9200/"
 ```
 
----
-
-## 🧯 Troubleshooting
-
-### Certificate verification fails
-
-Check:
-
-1. the CA used by the client matches the CA that signed the Elasticsearch certificate;
-2. the certificate contains the hostname/IP identity used by the client;
-3. the correct CA path is mounted into the container;
-4. the certificate has not expired.
-
-### Elasticsearch cannot load a PKCS#12 file
-
-Check:
-
-1. the file is readable by Elasticsearch;
-2. the configured keystore password matches the generated certificate;
-3. the file was not corrupted during transfer;
-4. the certificate contains the expected key material.
-
-### Node-to-node TLS fails
-
-Check each node's transport certificate, trust configuration, and certificate identity before investigating discovery or cluster formation.
+Also verify that the certificate identity matches the hostname used by the client.
 
 ---
 
-## 🌐 Air-Gapped Workflow
-
-The certificate workflow fits the offline deployment model:
+## 🧯 Troubleshooting Flow
 
 ```text
-Connected / controlled system
-          │
-          ├── generate certificates
-          ├── verify certificate chain
-          │
-          ▼
-     Controlled transfer
-          │
-          ▼
-     Air-gapped hosts
-          │
-          ├── ES node certificates
-          └── CA certificate for trusted clients
+TLS failure?
+    │
+    ▼
+Correct CA?
+    │
+    ▼
+Certificate identity matches endpoint?
+    │
+    ▼
+CA mounted at expected path?
+    │
+    ▼
+Private key / PKCS#12 readable?
+    │
+    ▼
+Certificate not expired?
+    │
+    ▼
+Then investigate Elasticsearch discovery/configuration
 ```
 
-Certificate generation itself does not require runtime internet access when the required Elasticsearch image/tooling has already been staged locally.
+---
+
+## 🧠 Operational Decisions
+
+| Decision | Why |
+|---|---|
+| One controlled CA | Consistent trust model |
+| Node-specific certificates | Clear node identity |
+| TLS on HTTP | Protect client traffic |
+| TLS on transport | Protect node-to-node traffic |
+| Offline generation | Fits air-gapped operation |
+| Generated material outside Git | Prevent private-key exposure |
+| CA distributed by trust need | Minimize sensitive material distribution |
+
+---
+
+## 🧪 Practical Failure Story
+
+When TLS fails, separate **trust**, **identity**, and **file-access** problems before changing Elasticsearch configuration:
+
+```text
+Handshake fails
+     │
+     ├── Trust → is the CA correct?
+     ├── Identity → does SAN match the endpoint?
+     └── Access → can the process read the key/certificate?
+```
+
+This is the certificate-side failure boundary used by the platform.
 
 ---
 
 ## 🔒 Portfolio Safety
 
-This directory intentionally contains no real infrastructure identities, addresses, passwords, or private keys.
-
-Replace placeholders only on the controlled deployment system and keep generated material outside the repository.
+No production addresses, credentials, private keys, generated certificates, or environment-specific identifiers are stored here.
 
 ---
 
@@ -230,6 +237,6 @@ Replace placeholders only on the controlled deployment system and keep generated
 
 ### Generate → Verify → Distribute → Trust
 
-**One controlled CA. Node-specific identities. Encrypted Elasticsearch communication.**
+**Controlled. Node-specific. TLS-protected. Air-gapped ready.**
 
 </div>
