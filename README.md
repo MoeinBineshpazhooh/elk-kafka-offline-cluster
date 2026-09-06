@@ -1,396 +1,269 @@
-# ELK + Kafka Offline Cluster (Air-Gapped Deployment)
+<div align="center">
 
-[![License](https://img.shields.io/github/license/MoeinBineshpazhooh/elk-kafka-offline-cluster)](LICENSE)
-[![Docker](https://img.shields.io/badge/Docker-Essential-blue.svg)](https://www.docker.com/)
-[![Elastic 9.2.4](https://img.shields.io/badge/Elastic-9.2.4-green.svg)](https://www.elastic.co/)
-[![Kafka Latest](https://img.shields.io/badge/Kafka-latest-orange.svg)](https://kafka.apache.org/)
+# Enterprise Observability Platform
 
-Complete offline deployment of production-ready ELK Stack + Kafka KRaft cluster across 10 servers.
+### Air-Gapped Elasticsearch + Kafka Observability Stack
 
-Supports fully air-gapped environments with offline Docker installation, pre-built image bundles, and automated certificate generation.
+**Filebeat → Kafka KRaft → Logstash → Elasticsearch → Kibana**
 
-## 🎯 Features
+[![Elastic](https://img.shields.io/badge/Elastic-9.2.4-005571?logo=elastic)](https://www.elastic.co/)
+[![Kafka](https://img.shields.io/badge/Kafka-KRaft-231F20?logo=apachekafka)](https://kafka.apache.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Air-Gapped](https://img.shields.io/badge/Deployment-Air--Gapped-success)](#air-gapped-by-design)
+[![License](https://img.shields.io/github/license/MoeinBineshpazhooh/enterprise-observability-platform)](LICENSE)
 
-- **Fully Offline**: Docker + all container images bundled (no internet required)
-- **Elasticsearch 9.2.4**: 3-node cluster with TLS (HTTP + Transport), security enabled
-- **Kafka KRaft**: 3 controllers + 2 brokers (no ZooKeeper)
-- **Logstash**: Kafka to Elasticsearch pipelines with TLS authentication
-- **Kibana**: Multi-node dashboard with SSL and security
-- **UIs**: AKHQ + Kafka-UI for Kafka management
-- **Certificates**: Automated TLS certificate generation for Elasticsearch
-- **Production-ready**: Proper node roles, service discovery, health checks
+A production-oriented reference implementation for deploying an observable log-ingestion platform in **restricted and air-gapped environments**, with explicit security boundaries, durable Kafka transport, Elasticsearch lifecycle management, and isolated pipeline configuration.
 
-## 🖥️ Architecture (10 Nodes)
+</div>
 
-**Elasticsearch Cluster (3 nodes)**:
-- es01, es02, es03: All master-eligible + data + ingest (with TLS, security enabled)
+---
 
-**Kibana + Logstash (2 nodes)**:
-- kibana01, kibana02 (Kibana UI with SSL)
-- logstash01, logstash02 (Kafka to Elasticsearch pipelines)
+## Architecture
 
-**Kafka KRaft (5 nodes)**:
-- kafka-controller01, kafka-controller02, kafka-controller03 (KRaft quorum)
-- kafka-broker01, kafka-broker02 (data brokers)
-
-**UIs (1 node)**:
-- akhq-ui + kafka-ui (combined)
-
-See [docs/host-layout-example.md](docs/host-layout-example.md) for detailed topology.
-
-## 🚀 Quick Start (Air-Gapped Environment)
-
-### Prerequisites
-
-- Ubuntu 22.04 or later on 10 Linux servers
-- SSH access between servers
-- Offline media (USB drive) with Docker packages + image bundle (~15GB total)
-- Basic familiarity with Docker and docker-compose
-
-### Step 1: Prepare Offline Packages
-
-On a machine with **internet access**:
-
-```
-cd offline/docker
-./download-docker.sh
-```
-```
-cd ../images
-./download-images.sh
-```
-# Creates: elk-kafka-images.tar (~10GB)
-Copy the following to USB or offline media:
-
-Docker .deb packages (from offline/docker/packages/)
-
-offline/images/elk-kafka-images.tar
-
-### Step 2: Install Docker on Each Server (Offline)
-On each of the 10 servers in air-gapped network:
-
-```
-cd offline/docker
-./install-docker-offline.sh
-docker --version
-docker compose version
+```text
+                         ┌──────────────────────┐
+                         │   Application Logs    │
+                         │   JSON / NDJSON       │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │      Filebeat        │
+                         │     filestream       │
+                         │ persistent registry  │
+                         └──────────┬───────────┘
+                                    │ SASL/PLAIN
+                                    ▼
+                 ┌────────────────────────────────────┐
+                 │             Kafka KRaft            │
+                 │                                    │
+                 │  Controller 01  Controller 02      │
+                 │  Controller 03                     │
+                 │                                    │
+                 │  Broker 01  Broker 02  Broker 03  │
+                 └────────────────┬───────────────────┘
+                                  │ SASL/PLAIN
+                                  ▼
+                         ┌──────────────────────┐
+                         │      Logstash        │
+                         │  isolated pipelines │
+                         │   Kafka → ES         │
+                         └──────────┬───────────┘
+                                    │ HTTPS / TLS
+                                    ▼
+                 ┌────────────────────────────────────┐
+                 │          Elasticsearch 3-node      │
+                 │       Security + TLS + ILM         │
+                 │       rollover + retention         │
+                 └────────────────┬───────────────────┘
+                                  │ HTTPS
+                                  ▼
+                         ┌──────────────────────┐
+                         │       Kibana          │
+                         │ Search / Dashboards   │
+                         └──────────────────────┘
 ```
 
-### Step 3: Load Container Images
-On each server, copy elk-kafka-images.tar and run:
+See [`docs/end-to-end-flow.md`](docs/end-to-end-flow.md) for the detailed data path and failure boundaries.
 
-```
-cd offline/images
-docker load -i elk-kafka-images.tar
-docker images | grep -E "(elastic|kafka|akhq|kafbat)"
-```
+## What This Repository Demonstrates
 
-### Step 4: Generate TLS Certificates
-On any one server (or secure machine):
+- **Air-gapped deployment** — offline Docker packages and preloaded container images.
+- **Kafka KRaft** — controller quorum without ZooKeeper, with broker-level ACLs.
+- **SASL authentication** — explicit Kafka authentication for producers and consumers.
+- **Filebeat filestream** — persistent registry and tuned file harvesting.
+- **Configuration isolation** — independent Filebeat input files and Logstash pipelines.
+- **Elasticsearch security** — TLS for HTTP and transport traffic.
+- **ILM + rollover** — size/age based rollover with controlled retention.
+- **Operational verification** — health and configuration validation scripts.
+- **Secrets hygiene** — public examples contain placeholders, not real credentials.
 
-```
-cd certificates/elasticsearch
-./generate-certs.sh
-```
-This creates certificates for:
+## Repository Layout
 
-HTTP TLS (es01-http.p12, es02-http.p12, es03-http.p12)
-
-Transport TLS (es01-transport.p12, etc.)
-
-Copy generated certs to each Elasticsearch node at:
-
-es01: /opt/elastic/es01/certs/
-
-es02: /opt/elastic/es02/certs/
-
-es03: /opt/elastic/es03/certs/
-
-### Step 5: Configure Your Environment
-Copy and edit inventory:
-
-```
-cp inventory/hosts.example.yml inventory/hosts.your-env.yml
-vim inventory/hosts.your-env.yml
-```
-Update with your actual server IPs/hostnames.
-
-### Step 6: Bootstrap Cluster (Sequential)
-Order matters! Deploy in this exact sequence:
-
-1. Kafka Controllers (3 nodes):
-
-```
-# On kafka-controller01, kafka-controller02, kafka-controller03:
-docker compose -f kafka/docker-compose.kafka-controllers.yml up -d
-docker logs kafka-controller01  # Verify startup
+```text
+.
+├── certificates/                 # TLS certificate generation material
+├── docs/                         # Architecture and operational documentation
+├── elasticsearch/                # 3-node Elasticsearch cluster + ILM
+│   ├── config/                   # Node-specific ES configuration
+│   ├── ilm/                      # Lifecycle policy
+│   └── templates/                # Index template + rollover bootstrap
+├── env/                          # Sanitized *.env.example files
+├── filebeat/                     # File ingestion layer
+│   ├── config/                   # Shared Filebeat runtime configuration
+│   └── inputs/                   # Isolated input definitions
+├── inventory/                    # Example host layout
+├── kafka/                        # KRaft controllers, brokers and ACLs
+│   ├── config/                   # Node-specific properties
+│   ├── security/                # ACL and client security material
+│   └── topics/                  # Example topic definitions
+├── kibana/                       # Kibana deployment and configuration
+├── logstash/                     # Isolated Kafka → Elasticsearch pipelines
+│   ├── config/                  # Logstash runtime configuration
+│   └── pipeline/                # Individual pipeline definitions
+├── offline/                      # Offline package/image preparation
+├── scripts/                      # Operational utilities
+└── ui/                           # Optional Kafka management UIs
 ```
 
-2. Kafka Brokers (2 nodes):
+## Security Model
 
-```
-# On kafka-broker01, kafka-broker02:
-docker compose -f kafka/docker-compose.kafka-brokers.yml up -d
-docker logs kafka-broker01
-```
+### Kafka
 
-3. Create Kafka Topics:
+Kafka uses **SASL/PLAIN** authentication with explicit principals and ACLs. Producer and consumer permissions are separated according to responsibility.
 
-```
-cd kafka/topics
-./create-topics.sh
-```
+> `SASL_PLAINTEXT` authenticates clients but does **not** encrypt traffic. For environments requiring confidentiality in transit, use TLS-enabled Kafka listeners together with SASL.
 
-4. Elasticsearch (3 nodes - SEQUENTIAL):
+### Elasticsearch
 
-# First node:
-```
-docker compose -f elasticsearch/docker-compose.es01.yml up -d
-docker logs -f es-kiblog1  # Wait for "Elasticsearch started"
-sleep 30
-```
-# Second node:
-```
-docker compose -f elasticsearch/docker-compose.es02.yml up -d
-docker logs -f es-kiblog2
-sleep 30
-```
-# Third node:
-```
-docker compose -f elasticsearch/docker-compose.es03.yml up -d
-docker logs -f es-kiblog3
+Elasticsearch is configured with security enabled and TLS for both HTTP and transport communication. Certificates are generated separately from the runtime deployment.
+
+### Secrets
+
+Never commit production credentials. Copy an example environment file locally, replace every `CHANGE_ME_*` value, and keep the real file outside version control.
+
+## Configuration Isolation
+
+The platform deliberately avoids one giant configuration file.
+
+### Filebeat
+
+```text
+filebeat/config/filebeat.yml
+        │
+        └── loads → filebeat/inputs/*.yml
 ```
 
-5. Set Kibana System User Password:
+A new application or log source can therefore be introduced as an independent input definition without modifying the shared Kafka output configuration.
 
+### Logstash
 
-# On es01 node:
-```
-docker exec es-kiblog1 bin/elasticsearch-reset-password -u kibana_system -a
-```
-# Save the generated password for Kibana config
-
-6. Kibana (1 or 2 nodes):
-
-# Update env/kibana.env with kibana_system password
-```
-docker compose -f kibana/docker-compose.kibana01.yml up -d
-docker logs -f kibana-01
+```text
+logstash/config/pipelines.yml
+        │
+        ├── pipeline A → pipeline/a.conf
+        └── pipeline B → pipeline/b.conf
 ```
 
-7. Logstash (1 or 2 nodes):
+Each pipeline can be mounted independently on its Logstash host, which keeps ownership, troubleshooting, and lifecycle boundaries clear.
 
-# Update env/logstash.env with elastic user password
+## Elasticsearch Lifecycle
+
+The example log stream uses an ILM policy with:
+
+| Phase | Policy |
+|---|---|
+| Hot | Rollover at 10 GB primary shard size or 1 day |
+| Warm | After 1 day |
+| Delete | After 30 days |
+
+The rollover alias is used as the stable write target. The initial index is bootstrapped separately so that only the intended write index receives the `is_write_index` flag.
+
+## Air-Gapped by Design
+
+Runtime hosts are not expected to access the public internet.
+
+```text
+Internet-connected preparation host
+            │
+            ├── Docker packages
+            ├── container image bundle
+            ├── certificates / approved artifacts
+            │
+            ▼
+      Controlled offline media
+            │
+            ▼
+      Air-gapped environment
+            │
+            ├── Kafka
+            ├── Filebeat
+            ├── Logstash
+            ├── Elasticsearch
+            └── Kibana
 ```
-docker compose -f logstash/docker-compose.logstash01.yml up -d
-docker logs -f logstash-01
+
+The `offline/` directory contains the preparation workflow. Images should be validated before being transferred into the restricted environment.
+
+## Deployment Sequence
+
+For a clean installation, use the following dependency order:
+
+1. Prepare offline Docker packages and images.
+2. Generate and distribute Elasticsearch certificates.
+3. Deploy the three Kafka controllers.
+4. Deploy the three Kafka brokers.
+5. Create the required Kafka topics and ACLs.
+6. Deploy the Elasticsearch nodes.
+7. Bootstrap the Elasticsearch rollover index.
+8. Deploy Filebeat and verify Kafka publication.
+9. Deploy Logstash and verify Kafka consumption.
+10. Deploy Kibana and validate search/dashboard access.
+11. Run the configuration and health checks.
+
+Component-specific instructions live in each component's README.
+
+## Verification
+
+Validate Compose configuration before deployment:
+
+```bash
+./scripts/validate-configuration.sh
 ```
 
-8. UIs (Optional, 1 node):
+Then verify each boundary independently:
 
+```text
+Filebeat
+  └─ events published → Kafka
+
+Kafka
+  └─ topic + ACL + consumer group healthy
+
+Logstash
+  └─ events consumed → Elasticsearch
+
+Elasticsearch
+  └─ alias + ILM + documents healthy
+
+Kibana
+  └─ data view / dashboards available
 ```
-docker compose -f ui/docker-compose.akhq-kafka-ui.yml up -d
-```
 
-Step 7: Health Check
+## Operational Principles
 
-Run the health verification script:
-```
-./scripts/check-health.sh
-```
-Should output:
+### Durable boundaries
 
-✓ Elasticsearch cluster health: GREEN
-✓ Kafka brokers: 2 registered
-✓ Kibana: RUNNING
-✓ Logstash: RUNNING
+Kafka separates file ingestion from downstream processing. A temporary Logstash or Elasticsearch outage does not require the application to remain connected to the entire observability stack.
 
-📋 Directory Structure
-elk-kafka-offline-cluster/
-├── README.md                          # This file
-├── LICENSE
-├── .gitignore
-│
-├── docs/                              # Documentation
-│   ├── architecture-overview.md
-│   ├── offline-installation.md
-│   ├── ssl-certificates.md
-│   ├── elasticsearch-setup.md
-│   ├── kafka-kraft-setup.md
-│   ├── logstash-kibana-setup.md
-│   ├── operations-and-troubleshooting.md
-│   └── host-layout-example.md
-│
-├── inventory/                         # Server configuration
-│   ├── hosts.example.yml              # Template
-│   └── hosts.your-env.yml             # Your environment (gitignored)
-│
-├── offline/                           # Offline installation
-│   ├── docker/
-│   │   ├── download-docker.sh
-│   │   ├── install-docker-offline.sh
-│   │   ├── install-docker-offline.md
-│   │   └── packages/
-│   ├── images/
-│   │   ├── download-images.sh
-│   │   ├── load-images.sh
-│   │   ├── image-list.txt
-│   │   └── (elk-kafka-images.tar)
-│   └── elastic-bundles/
-│       └── certutil-instructions.md
-│
-├── certificates/                      # TLS certificate generation
-│   ├── elasticsearch/
-│   │   ├── instances.yml
-│   │   ├── generate-certs.sh
-│   │   ├── README.md
-│   │   ├── http/                      # (generated)
-│   │   └── transport/                 # (generated)
-│   └── kafka/
-│       └── README.md
-│
-├── env/                               # Environment variables
-│   ├── elastic.env.example
-│   ├── kibana.env.example
-│   ├── logstash.env.example
-│   ├── kafka-broker.env.example
-│   ├── kafka-controller.env.example
-│   └── .gitignore
-│
-├── elasticsearch/                     # ES deployment
-│   ├── docker-compose.es01.yml
-│   ├── docker-compose.es02.yml
-│   ├── docker-compose.es03.yml
-│   ├── config/
-│   │   ├── es01/elasticsearch.yml
-│   │   ├── es02/elasticsearch.yml
-│   │   └── es03/elasticsearch.yml
-│   └── README.md
-│
-├── kibana/                            # Kibana deployment
-│   ├── docker-compose.kibana01.yml
-│   ├── docker-compose.kibana02.yml
-│   ├── config/
-│   │   └── kibana.yml.example
-│   └── README.md
-│
-├── logstash/                          # Logstash pipelines
-│   ├── docker-compose.logstash01.yml
-│   ├── docker-compose.logstash02.yml
-│   ├── pipeline/
-│   │   ├── kafka-to-elasticsearch.conf
-│   │   └── beats-to-kafka.conf
-│   ├── config/
-│   │   ├── logstash.yml
-│   │   └── pipelines.yml
-│   └── README.md
-│
-├── kafka/                             # Kafka deployment
-│   ├── docker-compose.kafka-controllers.yml
-│   ├── docker-compose.kafka-brokers.yml
-│   ├── config/
-│   │   ├── controller1.properties
-│   │   ├── controller2.properties
-│   │   ├── controller3.properties
-│   │   ├── broker1.properties
-│   │   └── broker2.properties
-│   ├── topics/
-│   │   ├── topics.yml
-│   │   └── create-topics.sh
-│   └── README.md
-│
-├── ui/                                # Kafka UIs
-│   ├── docker-compose.akhq-kafka-ui.yml
-│   └── README.md
-│
-└── scripts/                           # Utilities
-    ├── bootstrap-all.sh
-    ├── check-health.sh
-    ├── generate-passwords.md
-    └── system-tuning.md
+### Least privilege
 
-🔧 Operations
-Health Status
-Service	Command	Expected
-Elasticsearch	curl -u elastic:PASSWORD https://es01:9200/_cluster/health	"status":"green"
-Kafka Quorum	docker exec kafka-controller01 kafka-metadata-quorum.sh --bootstrap-controller localhost:9093 describe --status	"status":"Leader"
-Kibana	curl https://kibana01:5601/api/status	HTTP 200
-Logstash	curl localhost:9600/_node/stats	"status":"green"
-Useful URLs (Web UIs)
-Kibana: https://kibana01:5601 (username: elastic or kibana_system)
+Clients receive only the Kafka permissions required for their role. Administrative access is kept separate from application and pipeline identities.
 
-AKHQ: http://kibana01:8080 (Kafka management)
+### Explicit failure domains
 
-Kafka-UI: http://kibana01:8081 (Alternative Kafka UI)
+Each major component has its own configuration, storage, credentials, and deployment unit. This makes failures easier to isolate and recovery procedures easier to reason about.
 
-Common Operations
-Reset Elastic User Password:
+### Reproducibility
 
-```
-docker exec es-kiblog1 bin/elasticsearch-reset-password -u elastic -a
-Check Kafka Brokers:
-```
-```
-docker exec kafka-broker01 kafka-broker-api-versions.sh --bootstrap-server localhost:9092
-```
-View Elasticsearch Nodes:
-```
-curl -u elastic:PASSWORD https://es01:9200/_cat/nodes?v
-```
-⚠️ Security Notes
-Change Default Passwords: All env/*.example files contain default credentials. Update before production.
+The repository favors declarative configuration and deterministic bootstrap steps over manual changes made inside running containers.
 
-TLS Certificates: Self-signed certificates are generated for convenience. For production, use CA-signed certificates.
+## Documentation
 
-Security Enabled: xpack.security.enabled: true on all components. Credentials required.
+- [`docs/end-to-end-flow.md`](docs/end-to-end-flow.md) — complete ingestion path and failure boundaries
+- [`elasticsearch/README.md`](elasticsearch/README.md) — Elasticsearch cluster
+- [`kafka/README.md`](kafka/README.md) — Kafka KRaft and ACLs
+- [`filebeat/README.md`](filebeat/README.md) — Filebeat ingestion
+- [`logstash/README.md`](logstash/README.md) — Logstash pipelines
+- [`elasticsearch/ilm/README.md`](elasticsearch/ilm/README.md) — lifecycle management
+- [`elasticsearch/templates/README.md`](elasticsearch/templates/README.md) — index templates and rollover
 
-Network:
+## Portfolio Scope
 
-Elasticsearch: ports 9200 (HTTP), 9300 (Transport)
+This repository is intentionally presented as a **sanitized reference architecture**. Network addresses, topic names, usernames, passwords, host paths, and other environment-specific identifiers are fictional placeholders.
 
-Kibana: port 5601
+The goal is to demonstrate the engineering approach: secure transport boundaries, resilient log delivery, configuration isolation, lifecycle management, offline operations, and operational troubleshooting.
 
-Kafka: ports 9092 (PLAINTEXT), 9093 (CONTROLLER)
+## License
 
-Configure firewall accordingly
-
-Air-Gapped: Network isolation is your security layer. Validate images before loading.
-
-📚 Documentation
-Architecture Overview - High-level design and decisions
-
-Offline Installation - Step-by-step offline install guide
-
-SSL Certificates - Generating and managing TLS certificates
-
-Elasticsearch Setup - ES cluster configuration and tuning
-
-Kafka KRaft Setup - KRaft quorum and broker configuration
-
-Logstash + Kibana Setup - Pipelines and UI configuration
-
-Operations & Troubleshooting - Common issues and fixes
-
-Host Layout Example - Detailed server role assignment
-
-🤝 Contributing
-Fork this repository
-
-Test changes in your environment (update inventory/hosts.your-env.yml)
-
-Verify all components start and health checks pass
-
-Submit PR with detailed changes
-
-❓ Troubleshooting Quick Links
-Docker fails to load images: See offline/images/README.md
-
-Elasticsearch won't join cluster: See docs/elasticsearch-setup.md
-
-Kafka metadata stuck: See docs/kafka-kraft-setup.md
-
-Logstash can't connect to ES: See docs/logstash-kibana-setup.md
-
-📄 License
-MIT License - See LICENSE file for details.
-
+MIT — see [`LICENSE`](LICENSE).
