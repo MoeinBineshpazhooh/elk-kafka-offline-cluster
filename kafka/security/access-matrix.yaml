@@ -3,7 +3,7 @@
 # ============================================================
 # Documentation-safe reference configuration.
 # Passwords are NEVER stored here.
-# All identities below are fictional/sanitized portfolio values.
+# All identities and topic names are fictional/sanitized.
 #
 # Security model:
 #   Authentication : SASL/PLAIN
@@ -21,7 +21,6 @@ cluster:
   sasl_mechanism: PLAIN
 
 principals:
-  # Cluster identities
   - kafka-admin
   - broker01
   - broker02
@@ -29,8 +28,6 @@ principals:
   - controller01
   - controller02
   - controller03
-
-  # Application identities
   - filebeat
   - logstash
   - collector
@@ -38,7 +35,6 @@ principals:
   - app
 
 credentials:
-  # Password values belong in local secret/env files only.
   kafka-admin: CHANGE_ME_KAFKA_ADMIN_PASSWORD
   broker01: CHANGE_ME_BROKER01_PASSWORD
   broker02: CHANGE_ME_BROKER02_PASSWORD
@@ -53,30 +49,27 @@ credentials:
   app: CHANGE_ME_APP_PASSWORD
 
 acl_policy:
-  # Internal cluster identities are represented as super users in the
-  # node properties because they must perform KRaft/internal operations.
   cluster_admin:
     principal: kafka-admin
     permissions: [ALL]
     scope: cluster
 
-  # Application access follows least privilege.
   filebeat:
     principal: filebeat
     permissions:
-      - topic: scm-logs
+      - topic: demo-application-logs
         actions: [WRITE, DESCRIBE]
 
   logstash:
     principal: logstash
     permissions:
-      - topic: scm-logs
+      - topic: demo-application-logs
         actions: [READ, DESCRIBE]
 
   collector:
     principal: collector
     permissions:
-      - topic: scm-monitoring
+      - topic: demo-platform-events
         actions: [WRITE, DESCRIBE]
 
   akhq:
@@ -84,19 +77,19 @@ acl_policy:
     permissions:
       - scope: cluster
         actions: [DESCRIBE]
-      - topic: scm-logs
+      - topic: demo-application-logs
         actions: [READ, DESCRIBE]
-      - topic: scm-monitoring
+      - topic: demo-platform-events
         actions: [READ, DESCRIBE]
 
   application:
     principal: app
     permissions:
-      - topic: scm-logs
+      - topic: demo-application-logs
         actions: [WRITE, DESCRIBE]
 
 notes:
   - "Use separate passwords for every principal."
   - "Do not commit real passwords, tokens, certificates, or private keys."
-  - "The exact ACL bootstrap commands should be generated from this matrix."
+  - "The topic names above are fictional portfolio examples."
   - "Adjust topic names and permissions when integrating another workload."
