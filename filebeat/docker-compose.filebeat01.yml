@@ -1,0 +1,22 @@
+services:
+  filebeat01:
+    image: docker.elastic.co/beats/filebeat:${FILEBEAT_VERSION:-9.0.1}
+    container_name: filebeat01
+    user: root
+    restart: unless-stopped
+
+    env_file:
+      - ../env/filebeat.env
+
+    volumes:
+      - ./config/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./inputs:/usr/share/filebeat/inputs:ro
+      - /var/log/demo-app:/var/log/demo-app:ro
+      - filebeat-data:/usr/share/filebeat/data
+      - filebeat-logs:/usr/share/filebeat/logs
+
+    command: ["filebeat", "-e"]
+
+volumes:
+  filebeat-data:
+  filebeat-logs:
