@@ -1,4 +1,4 @@
-cluster.name: drp-elk
+cluster.name: portfolio-observability
 node.name: es01
 
 # Option B roles: master-eligible + data + ingest
@@ -6,11 +6,11 @@ node.roles: [ master, data, ingest ]
 
 path.repo: ["/mnt/snapshots"]
 
-network.host: 10.10.4.101
+network.host: 192.0.2.31
 http.port: 9200
 transport.port: 9300
 
-discovery.seed_hosts: ["10.10.4.101:9300", "10.10.4.102:9300", "10.10.4.103:9300"]
+discovery.seed_hosts: ["192.0.2.31:9300", "192.0.2.32:9300", "192.0.2.33:9300"]
 cluster.initial_master_nodes: ["es01", "es02", "es03"]
 
 # Monitoring
