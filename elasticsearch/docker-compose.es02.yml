@@ -10,7 +10,7 @@ services:
     environment:
       ES_JAVA_OPTS: "-Xms2g -Xmx2g"
       ELASTIC_PASSWORD: "${ELASTIC_PASSWORD}"
-      cluster.name: "drp-elk"
+      cluster.name: "portfolio-observability"
       node.name: "es02"
 
     ulimits:
