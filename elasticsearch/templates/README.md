@@ -1,61 +1,92 @@
-# Elasticsearch Index Template & Rollover
-
 <div align="center">
 
-### Stable Writes. Managed Indices. Predictable Rotation.
+# 🧱 Elasticsearch Index Template & Rollover
 
-`Template` → `Alias` → `demo-logs-000001` → `Rollover` → `demo-logs-000002` → `…`
+### Stable Alias • Template Contract • Bootstrap • ILM Rollover
+
+![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.3.3-005571?logo=elasticsearch)
+![Lifecycle](https://img.shields.io/badge/Lifecycle-ILM-success)
+![Rollover](https://img.shields.io/badge/Rollover-Alias-orange)
 
 </div>
 
 ---
 
-## 🧩 Design
-
-The ingestion layer writes to a stable alias instead of addressing backing indices directly.
+## 🧭 Architecture at a Glance
 
 ```text
-                     ┌───────────────────────┐
-                     │      Producers        │
-                     └───────────┬───────────┘
-                                 │
-                                 ▼
-                     ┌───────────────────────┐
-                     │      Write Alias      │
-                     │       demo-logs       │
-                     └───────────┬───────────┘
-                                 │
-                                 ▼
-                     ┌───────────────────────┐
-                     │   demo-logs-000001    │
-                     │      write index      │
-                     └───────────┬───────────┘
-                                 │
-                         ILM rollover
-                                 │
-                                 ▼
-                     ┌───────────────────────┐
-                     │   demo-logs-000002    │
-                     │      write index      │
-                     └───────────────────────┘
+🚚 Producers
+     │
+     ▼
+┌───────────────────┐
+│ demo-logs alias   │
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│ demo-logs-000001  │
+│   write index     │
+└─────────┬─────────┘
+          │ ILM rollover
+          ▼
+┌───────────────────┐
+│ demo-logs-000002  │
+│   write index     │
+└───────────────────┘
 ```
 
-The client-facing alias remains unchanged while ILM rotates the backing index.
-
 ---
 
-## 📁 Files
+## 🧩 Implementation at a Glance
 
-| File | Purpose |
+| Component | Purpose |
 |---|---|
-| `observability-index-template.json` | Applies lifecycle and rollover settings to matching indices |
-| `create-rollover-index.sh` | Creates the first index and marks the alias as the write index |
+| Index template | Attaches lifecycle and rollover settings |
+| `observability-ilm-policy` | Defines rollover/retention behavior |
+| `demo-logs` | Stable ingestion alias |
+| Bootstrap script | Creates the initial write index |
+| Backing indices | Physical rollover generations |
 
 ---
 
-## ⚙️ Template Settings
+## 🧠 Responsibility Boundary
 
-The template applies:
+```text
+Template
+   │
+   ├── lifecycle policy
+   └── rollover alias
+
+Bootstrap script
+   │
+   └── initial is_write_index
+
+ILM
+   │
+   └── subsequent rollover generations
+
+Logstash
+   │
+   └── writes only to stable alias
+```
+
+This keeps ingestion independent from physical index names.
+
+---
+
+## 📁 Repository Layout
+
+```text
+elasticsearch/templates/
+├── README.md
+├── observability-index-template.json
+└── create-rollover-index.sh
+```
+
+---
+
+## ⚙️ Template Contract
+
+The template associates matching indices with the lifecycle policy and rollover alias:
 
 ```json
 {
@@ -64,27 +95,25 @@ The template applies:
 }
 ```
 
-The template targets:
+The example pattern is:
 
 ```text
 demo-logs-*
 ```
 
-The fictional names are intentionally portfolio-safe and must be replaced locally for a real environment.
+The template deliberately does **not** assign `is_write_index: true`. That flag belongs to the bootstrap alias operation.
 
 ---
 
-## 🚀 Deployment Order
+## 🚀 Deployment
 
-### 1. Create the ILM policy
-
-Apply:
+### 1. Apply ILM first
 
 ```text
 ../ilm/observability-ilm-policy.json
 ```
 
-### 2. Register the index template
+### 2. Register the template
 
 ```bash
 curl --cacert /path/to/ca.crt \
@@ -95,39 +124,29 @@ curl --cacert /path/to/ca.crt \
   --data-binary @observability-index-template.json
 ```
 
-### 3. Create the initial write index
+### 3. Bootstrap the first index
 
 ```bash
 ./create-rollover-index.sh
 ```
 
-This creates:
+The result is:
 
 ```text
-demo-logs-000001
+demo-logs → demo-logs-000001
 ```
 
-with:
+with the initial backing index marked as the write index.
 
-```text
-demo-logs → demo-logs-000001 (write index)
-```
+### 4. Start ingestion
 
-### 4. Point ingestion to the alias
-
-Applications and pipelines should write to:
-
-```text
-demo-logs
-```
-
-not directly to a numbered backing index.
+Point Logstash to `demo-logs`, not to a numbered backing index.
 
 ---
 
-## 🔎 Verify
+## 🔎 Verification
 
-Template:
+### Template
 
 ```bash
 curl --cacert /path/to/ca.crt \
@@ -135,7 +154,7 @@ curl --cacert /path/to/ca.crt \
   "https://<ELASTICSEARCH_HOST>:9200/_index_template/observability-index-template?pretty"
 ```
 
-Alias:
+### Alias
 
 ```bash
 curl --cacert /path/to/ca.crt \
@@ -143,7 +162,7 @@ curl --cacert /path/to/ca.crt \
   "https://<ELASTICSEARCH_HOST>:9200/_alias/demo-logs?pretty"
 ```
 
-ILM state:
+### Lifecycle
 
 ```bash
 curl --cacert /path/to/ca.crt \
@@ -153,49 +172,74 @@ curl --cacert /path/to/ca.crt \
 
 ---
 
-## 🛠️ Rollover Troubleshooting
-
-If rollover appears not to happen, check these in order:
+## 🧯 Troubleshooting Flow
 
 ```text
 Template applied?
-       │
-       ▼
-ILM policy attached?
-       │
-       ▼
-Rollover alias configured?
-       │
-       ▼
+      ↓
+ILM attached?
+      ↓
+Alias configured?
+      ↓
 Exactly one write index?
-       │
-       ▼
-ILM explain state?
-       │
-       ▼
-Age / shard-size condition reached?
+      ↓
+ILM explain healthy?
+      ↓
+Threshold reached?
+      ↓
+Rollover
 ```
 
-A small index should **not** be expected to roll over merely because ILM is enabled. The configured rollover thresholds must actually be reached.
+A configured rollover threshold does not force an immediate rollover; the relevant age or primary-shard-size condition must be reached.
 
 ---
 
-## 🔐 Credential Safety
+## 🧠 Operational Decisions
 
-Credentials are intentionally represented as placeholders:
+| Decision | Why |
+|---|---|
+| Stable alias | Producers remain independent of backing indices |
+| Explicit bootstrap | Initial write state is deterministic |
+| No write flag in template | Prevent multiple write-index conflicts |
+| ILM-owned rollover | Elasticsearch controls index generations |
+| Numbered indices | Keep physical generations explicit and inspectable |
+
+---
+
+## 🧪 Practical Failure Story
+
+If an index appears larger than expected but does not roll over, verify the **actual policy metric** first:
 
 ```text
-CHANGE_ME_*
-<PASSWORD>
-<ELASTICSEARCH_HOST>
+Observed total store size
+          │
+          ▼
+Policy uses primary-shard size?
+          │
+          ▼
+Check _ilm/explain
+          │
+          ▼
+Check alias / write index
+          │
+          ▼
+Confirm threshold
 ```
 
-Do not commit real passwords, private addresses, certificates, tokens, or environment-specific identifiers.
+This prevents changing ILM configuration based on the wrong measurement.
+
+---
+
+## 🔒 Portfolio Safety
+
+All addresses, credentials, private keys, and environment-specific identifiers remain outside Git. Example names are fictional and intended only as documentation contracts.
 
 ---
 
 <div align="center">
 
-**Stable alias in front. ILM in control. Backing indices rotate automatically.**
+### Template → Alias → Bootstrap → Rollover
+
+**Stable writes. Explicit state. Predictable index generations.**
 
 </div>
