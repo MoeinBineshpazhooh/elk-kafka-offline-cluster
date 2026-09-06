@@ -1,198 +1,240 @@
 <div align="center">
 
-# Enterprise Observability Platform
+# 🛰️ Enterprise Observability Platform
 
 ### Air-Gapped Elasticsearch + Kafka Observability Stack
 
 **Filebeat → Kafka KRaft → Logstash → Elasticsearch → Kibana**
 
-[![Elastic](https://img.shields.io/badge/Elastic-9.2.4-005571?logo=elastic)](https://www.elastic.co/)
-[![Kafka](https://img.shields.io/badge/Kafka-KRaft-231F20?logo=apachekafka)](https://kafka.apache.org/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Air-Gapped](https://img.shields.io/badge/Deployment-Air--Gapped-success)](#air-gapped-by-design)
+![Elastic](https://img.shields.io/badge/Elastic-9.3.3-005571?logo=elastic)
+![Kafka](https://img.shields.io/badge/Kafka-KRaft-231F20?logo=apachekafka)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Air-Gapped](https://img.shields.io/badge/Deployment-Air--Gapped-success)
 
-A production-oriented reference implementation for deploying an observable log-ingestion platform in **restricted and air-gapped environments**, with explicit security boundaries, durable Kafka transport, Elasticsearch lifecycle management, isolated pipeline configuration, and a portable Kibana dashboard bundle.
+A sanitized, production-oriented reference implementation for operating a secure log-ingestion platform in restricted environments, with durable Kafka transport, Elasticsearch lifecycle management, isolated pipeline configuration, and a portable Kibana dashboard.
 
 </div>
 
 ---
 
-## Architecture
+## 🧭 Architecture at a Glance
 
 ```text
-Application Logs → Filebeat → Kafka KRaft → Logstash → Elasticsearch → Kibana
+📦 Application Logs
+        │
+        ▼
+┌────────────────┐
+│ 🛰️ Filebeat    │  filestream + NDJSON + registry
+└───────┬────────┘
+        │ SASL/PLAIN
+        ▼
+┌────────────────┐
+│ 📨 Kafka KRaft │  3 controllers + 3 brokers
+└───────┬────────┘
+        │ consumer group
+        ▼
+┌────────────────┐
+│ 🚚 Logstash    │  isolated pipelines
+└───────┬────────┘
+        │ HTTPS/TLS
+        ▼
+┌────────────────┐
+│ 🔎 Elasticsearch│  3 nodes + security + ILM
+└───────┬────────┘
+        ▼
+┌────────────────┐
+│ 📊 Kibana       │  Saved Objects dashboard
+└────────────────┘
 ```
 
-The detailed architecture and failure boundaries are documented in [`docs/end-to-end-flow.md`](docs/end-to-end-flow.md).
+---
 
-## What This Repository Demonstrates
+## 🧩 Implementation at a Glance
 
-- **Air-gapped deployment** — offline Docker packages and preloaded container images.
-- **Kafka KRaft** — controller quorum without ZooKeeper, with broker-level ACLs.
-- **SASL authentication** — explicit Kafka authentication for producers and consumers.
-- **Filebeat filestream** — persistent registry and tuned file harvesting.
-- **Configuration isolation** — independent Filebeat input files and Logstash pipelines.
-- **Elasticsearch security** — TLS for HTTP and transport traffic.
-- **ILM + rollover** — size/age based rollover with controlled retention.
-- **Kibana Saved Objects** — portable Data View and operational dashboard bundle.
-- **Operational verification** — Compose and Saved Object validation scripts.
-- **Secrets hygiene** — public examples contain placeholders, not real credentials.
+| Component | Implemented design |
+|---|---|
+| Filebeat | `9.3.3`, filestream, NDJSON, persistent registry |
+| Kafka | KRaft, 3 controllers + 3 brokers, SASL/PLAIN, ACLs |
+| Logstash | `9.3.3`, isolated Kafka → Elasticsearch pipelines |
+| Elasticsearch | `9.3.3`, 3 combined-role nodes, HTTP + transport TLS |
+| Kibana | `9.3.3`, portable Saved Objects dashboard |
+| Deployment | Docker Compose, host-oriented distributed layout |
+| Runtime model | Air-gapped / offline-capable |
 
-## Repository Layout
+---
+
+## 🧠 Engineering Decisions
+
+The repository is intentionally built around practical operational decisions rather than technology accumulation.
 
 ```text
-.
-├── certificates/                 # TLS certificate generation material
-├── docs/                         # Architecture and operational documentation
-├── elasticsearch/                # 3-node Elasticsearch cluster + ILM
-├── env/                          # Sanitized *.env.example files
-├── filebeat/                     # File ingestion layer
-│   ├── config/                   # Shared Filebeat runtime configuration
-│   └── inputs/                   # Isolated input definitions
-├── inventory/                    # Example host layout
-├── kafka/                        # KRaft controllers, brokers and ACLs
-├── kibana/                       # Kibana deployment + Saved Objects
-│   ├── saved-objects.ndjson      # Portable dashboard bundle
-│   └── saved-objects/            # Import/versioning documentation
-├── logstash/                     # Isolated Kafka → Elasticsearch pipelines
-├── offline/                      # Offline package/image preparation
-├── scripts/                      # Operational utilities
-└── ui/                           # Optional Kafka management UIs
+Problem
+  ↓
+Observe / isolate failure boundary
+  ↓
+Choose the smallest reliable mechanism
+  ↓
+Verify independently
+  ↓
+Document the operational lesson
 ```
 
-## Security Model
+Key examples:
+
+- **Kafka KRaft:** remove ZooKeeper from the Kafka architecture and keep controller metadata responsibility inside Kafka.
+- **Kafka ACLs:** separate application, producer, consumer, management, and node identities instead of using one administrative credential everywhere.
+- **Filebeat input isolation:** keep source-specific paths, parsers, and processors local to each input.
+- **Persistent Filebeat registry:** preserve file identity and read position across container recreation.
+- **Logstash pipeline isolation:** make configuration changes and troubleshooting local to a pipeline.
+- **Elasticsearch rollover alias:** keep Logstash independent from physical backing-index names.
+- **Elasticsearch ILM:** let Elasticsearch own lifecycle transitions rather than coupling retention logic to Logstash.
+- **TLS boundaries:** protect Elasticsearch HTTP and transport traffic; Kafka `SASL_PLAINTEXT` is documented as authentication only.
+
+---
+
+## 🧯 Operational Failure Boundaries
+
+```text
+Application → Filebeat
+   │             └─ file exists / readable / harvested?
+   ▼
+Filebeat → Kafka
+   │             └─ authentication / ACL / topic?
+   ▼
+Kafka → Logstash
+   │             └─ consumer group / partitions / offsets?
+   ▼
+Logstash → Elasticsearch
+   │             └─ HTTPS / CA / credentials / alias?
+   ▼
+Elasticsearch → Kibana
+                 └─ Data View / fields / dashboard?
+```
+
+This boundary-oriented troubleshooting model is one of the main operational lessons represented by the project.
+
+---
+
+## 🔐 Security Model
 
 ### Kafka
 
-Kafka uses **SASL/PLAIN** authentication with explicit principals and ACLs. Producer and consumer permissions are separated according to responsibility.
-
-> `SASL_PLAINTEXT` authenticates clients but does **not** encrypt traffic. For environments requiring confidentiality in transit, use TLS-enabled Kafka listeners together with SASL.
+Dedicated principals authenticate through SASL/PLAIN and are authorized through ACLs. `SASL_PLAINTEXT` does **not** provide encryption.
 
 ### Elasticsearch
 
-Elasticsearch is configured with security enabled and TLS for both HTTP and transport communication. Certificates are generated separately from the runtime deployment.
+Security is enabled, with TLS for HTTP and node-to-node transport. Node-specific certificates are generated separately.
 
 ### Secrets
 
-Never commit production credentials. Copy an example environment file locally, replace every `CHANGE_ME_*` value, and keep the real file outside version control.
+Production passwords, private keys, tokens, real addresses, and environment-specific identifiers remain outside Git.
 
-## Configuration Isolation
+---
 
-The platform deliberately avoids one giant configuration file.
-
-### Filebeat
+## 🔄 Elasticsearch Lifecycle
 
 ```text
-filebeat/config/filebeat.yml
-        │
-        └── loads → filebeat/inputs/*.yml
+Stable write alias
+       │
+       ▼
+ demo-logs-000001
+       │
+   size OR age
+       ▼
+    rollover
+       │
+       ▼
+ demo-logs-000002
+       │
+       ▼
+     warm
+       │
+       ▼
+    delete
 ```
 
-A new application or log source can therefore be introduced as an independent input definition without modifying the shared Kafka output configuration.
+Current policy: rollover at `10 GB` primary-shard size or `1 day`, warm after `1 day`, delete after `30 days`.
 
-### Logstash
+---
+
+## 📁 Repository Layout
 
 ```text
-logstash/config/pipelines.yml
-        │
-        └── isolated pipeline definitions
+certificates/   TLS generation workflow
+docs/           architecture and operations
+elasticsearch/  cluster + ILM + templates
+filebeat/       edge collection
+kafka/          KRaft + ACLs + topics
+kibana/         deployment + Saved Objects
+logstash/       isolated pipelines
+offline/        offline preparation
+scripts/        validation utilities
+ui/             optional Kafka management UI
+env/            sanitized environment examples
 ```
 
-Each pipeline can be mounted independently on its Logstash host, keeping ownership, troubleshooting, and lifecycle boundaries clear.
+---
 
-## Elasticsearch Lifecycle
+## 🚀 Deployment Sequence
 
-The example log stream uses an ILM policy with:
-
-| Phase | Policy |
-|---|---|
-| Hot | Rollover at 10 GB primary shard size or 1 day |
-| Warm | After 1 day |
-| Delete | After 30 days |
-
-The rollover alias is used as the stable write target. The initial index is bootstrapped separately so that only the intended write index receives the `is_write_index` flag.
-
-## Kibana Dashboard
-
-The repository includes a single NDJSON bundle containing:
-
-- `demo-logs-*` Data View with `@timestamp` as the time field
-- Events-over-time visualization
-- Events-by-service-source visualization
-- Events-by-log-level visualization
-- Enterprise Observability dashboard combining the visualizations
-
-Import it from **Stack Management → Saved Objects → Import**:
-
-```text
-kibana/saved-objects.ndjson
-```
-
-Detailed import and versioning guidance is in [`kibana/saved-objects/README.md`](kibana/saved-objects/README.md).
-
-Because Kibana Saved Objects are version-sensitive, the bundle is intentionally tied to the repository's Kibana 9.2.x target. When upgrading Kibana, prefer exporting the objects from the target Kibana version and replacing the bundle rather than manually editing generated migration metadata.
-
-## Air-Gapped by Design
-
-Runtime hosts are not expected to access the public internet.
-
-```text
-Preparation host → controlled offline media → air-gapped environment
-```
-
-The `offline/` directory contains the preparation workflow. Images should be validated before transfer into the restricted environment.
-
-## Deployment Sequence
-
-1. Prepare offline Docker packages and images.
+1. Stage Docker packages and images for the restricted environment.
 2. Generate and distribute Elasticsearch certificates.
-3. Deploy the three Kafka controllers.
-4. Deploy the three Kafka brokers.
-5. Create the required Kafka topics and ACLs.
-6. Deploy the Elasticsearch nodes.
-7. Bootstrap the Elasticsearch rollover index.
-8. Deploy Filebeat and verify Kafka publication.
-9. Deploy Logstash and verify Kafka consumption.
-10. Deploy Kibana and import the Saved Object bundle.
-11. Run the configuration and Saved Object validation checks.
+3. Start the three Kafka controllers.
+4. Start the three Kafka brokers.
+5. Create topics and apply ACLs.
+6. Start the Elasticsearch nodes.
+7. Apply ILM/template configuration and bootstrap the rollover alias.
+8. Start Filebeat and verify publication to Kafka.
+9. Start Logstash and verify consumption/indexing.
+10. Start Kibana and import Saved Objects.
+11. Run configuration and Saved Object validation.
 
-## Verification
+---
 
-Validate Compose configuration:
+## 🔎 Verification Strategy
 
-```bash
-./scripts/validate-configuration.sh
-```
-
-Validate the Kibana NDJSON structure:
-
-```bash
-bash ./scripts/validate-kibana-saved-objects.sh
-```
-
-Then verify each boundary independently:
+Validate configuration first, then test each boundary independently:
 
 ```text
-Filebeat       → events published to Kafka
-Kafka          → topic + ACL + consumer group healthy
-Logstash       → events consumed and indexed
-Elasticsearch  → alias + ILM + documents healthy
-Kibana         → Data View + dashboard available
+❶ Filebeat reads the expected files
+❷ Kafka accepts authenticated producer traffic
+❸ Kafka consumer group receives events
+❹ Logstash indexes through the stable alias
+❺ Elasticsearch reports healthy lifecycle state
+❻ Kibana Data View and dashboard query the events
 ```
 
-## Documentation
+---
 
-- [`docs/end-to-end-flow.md`](docs/end-to-end-flow.md) — complete ingestion path and failure boundaries
-- [`elasticsearch/README.md`](elasticsearch/README.md) — Elasticsearch cluster
-- [`kafka/README.md`](kafka/README.md) — Kafka KRaft and ACLs
-- [`filebeat/README.md`](filebeat/README.md) — Filebeat ingestion
-- [`logstash/README.md`](logstash/README.md) — Logstash pipelines
-- [`elasticsearch/ilm/README.md`](elasticsearch/ilm/README.md) — lifecycle management
-- [`elasticsearch/templates/README.md`](elasticsearch/templates/README.md) — index templates and rollover
-- [`kibana/saved-objects/README.md`](kibana/saved-objects/README.md) — Saved Object import/versioning
+## 🎯 Interview Focus
 
-## Portfolio Scope
+This project is intentionally explainable end-to-end. An interview discussion can move from architecture into concrete operational questions:
 
-This repository is intentionally presented as a **sanitized reference architecture**. Network addresses, topic names, usernames, passwords, host paths, and other environment-specific identifiers are fictional placeholders.
+- Why KRaft instead of ZooKeeper?
+- How do SASL authentication and ACL authorization differ?
+- Why is `SASL_PLAINTEXT` not encryption?
+- Why persist the Filebeat registry?
+- What happens when a rotated log file becomes unreadable?
+- Why isolate Logstash pipelines?
+- Why does Logstash write to an alias instead of `index-*` directly?
+- What makes an Elasticsearch rollover happen?
+- How do you diagnose an apparently healthy pipeline with no documents?
+- What changes when the environment is air-gapped?
 
-The goal is to demonstrate the engineering approach: secure transport boundaries, resilient log delivery, configuration isolation, lifecycle management, offline operations, operational dashboards, and troubleshooting.
+The documentation is designed so these questions can be answered from the actual implementation rather than from generic platform claims.
+
+---
+
+## 🔒 Portfolio Safety
+
+All public examples are sanitized. Addresses, usernames, passwords, topics, aliases, registry names, host paths, and other environment-specific identifiers are fictional or represented by placeholders.
+
+---
+
+<div align="center">
+
+### 🛰️ Filebeat → 📨 Kafka → 🚚 Logstash → 🔎 Elasticsearch → 📊 Kibana
+
+**Secure. Decoupled. Observable. Operationally explainable.**
+
+</div>
