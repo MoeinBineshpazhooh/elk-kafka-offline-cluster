@@ -5,11 +5,6 @@
     "settings": {
       "index.lifecycle.name": "observability-ilm-policy",
       "index.lifecycle.rollover_alias": "demo-logs"
-    },
-    "aliases": {
-      "demo-logs": {
-        "is_write_index": true
-      }
     }
   }
 }
