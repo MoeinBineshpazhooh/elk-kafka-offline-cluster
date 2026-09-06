@@ -1,0 +1,10 @@
+# ============================================================
+# Kafka SASL/PLAIN Admin Client
+# ============================================================
+# Copy to a local, ignored file before use.
+# Never commit the real password.
+# ============================================================
+
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=PLAIN
+sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="kafka-admin" password="CHANGE_ME_KAFKA_ADMIN_PASSWORD";
