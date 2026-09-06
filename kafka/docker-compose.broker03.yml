@@ -1,0 +1,31 @@
+version: "3.8"
+
+# ============================================================
+# Kafka Broker 03
+# KRaft | SASL/PLAIN | Host Networking
+# ============================================================
+
+services:
+  kafka-broker03:
+    image: apache/kafka:latest
+    container_name: kafka-broker03
+    network_mode: host
+    restart: unless-stopped
+
+    environment:
+      KAFKA_CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+
+    volumes:
+      - ./config/broker3.properties:/etc/kafka/broker.properties:ro
+      - /opt/kafka/broker/data:/var/lib/kafka/data
+
+    command: >
+      bash -lc "
+        if [ ! -f /var/lib/kafka/data/meta.properties ]; then
+          echo '[INFO] Formatting broker storage (first boot)...';
+          /opt/kafka/bin/kafka-storage.sh format -t ${KAFKA_CLUSTER_ID} -c /etc/kafka/broker.properties;
+        else
+          echo '[INFO] Storage already formatted.';
+        fi;
+        exec /opt/kafka/bin/kafka-server-start.sh /etc/kafka/broker.properties
+      "
