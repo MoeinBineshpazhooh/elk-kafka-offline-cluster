@@ -1,213 +1,205 @@
-# Logstash — Isolated Pipelines
-
 <div align="center">
 
-## Kafka → Logstash → Elasticsearch
+# 🚚 Logstash Pipeline Layer
 
-**Authenticated ingestion · isolated pipeline configuration · TLS-protected Elasticsearch output**
+### Kafka → Logstash → Elasticsearch
 
-![Logstash](https://img.shields.io/badge/Logstash-9.2.4-005571?style=for-the-badge&logo=logstash)
-![Kafka](https://img.shields.io/badge/Kafka-SASL%2FPLAIN-231F20?style=for-the-badge&logo=apachekafka)
-![Elasticsearch](https://img.shields.io/badge/Elasticsearch-HTTPS-005571?style=for-the-badge&logo=elasticsearch)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker)
+![Logstash](https://img.shields.io/badge/Logstash-9.3.3-005571?logo=logstash)
+![Kafka](https://img.shields.io/badge/Kafka-SASL%2FPLAIN-231F20?logo=apachekafka)
+![Elasticsearch](https://img.shields.io/badge/Elasticsearch-HTTPS-005571?logo=elasticsearch)
+![Deployment](https://img.shields.io/badge/Deployment-Docker%20Compose-orange)
 
 </div>
 
 ---
 
-## 🧭 Architecture
-
-This implementation deliberately keeps **each Logstash pipeline as an isolated configuration unit**. Pipeline definitions live independently and are mounted explicitly into the container by Docker Compose.
+## 🧭 Architecture at a Glance
 
 ```text
-                         ┌──────────────────────┐
-                         │   Kafka Cluster      │
-                         │  3 Broker Example    │
-                         │                      │
-                         │ SASL/PLAIN           │
-                         └──────────┬───────────┘
-                                    │
-                                    │ authenticated consume
-                                    ▼
-              ┌─────────────────────────────────────────┐
-              │              Logstash Tier              │
-              │                                         │
-              │  ┌───────────────────────────────────┐  │
-              │  │ demo-kafka-to-elasticsearch       │  │
-              │  │ isolated pipeline configuration    │  │
-              │  └───────────────────────────────────┘  │
-              │                                         │
-              │       logstash01  ⇄  logstash02         │
-              │       shared consumer group             │
-              └──────────────────┬──────────────────────┘
-                                 │
-                                 │ HTTPS + CA validation
-                                 ▼
-                    ┌──────────────────────────┐
-                    │    Elasticsearch Cluster │
-                    │                          │
-                    │  demo-logs write alias   │
-                    │  + ILM rollover          │
-                    └──────────────────────────┘
+📨 Kafka KRaft
+      │
+      │ authenticated consume
+      ▼
+┌─────────────────────────────┐
+│ 🚚 Logstash                 │
+│                             │
+│ isolated pipeline configs   │
+│ shared consumer group       │
+└──────────────┬──────────────┘
+               │ HTTPS + CA
+               ▼
+┌─────────────────────────────┐
+│ 🔎 Elasticsearch            │
+│                             │
+│ stable write alias + ILM    │
+└─────────────────────────────┘
 ```
+
+---
+
+## 🧩 Implementation at a Glance
+
+| Capability | Implementation |
+|---|---|
+| Version | `9.3.3` |
+| Input | Kafka |
+| Authentication | SASL/PLAIN |
+| Event format | JSON |
+| Pipeline model | Explicit `pipelines.yml` |
+| Configuration | Isolated `.conf` files |
+| Instances | 2 Logstash hosts in the example topology |
+| Scaling model | Shared Kafka consumer group |
+| Elasticsearch transport | HTTPS + CA validation |
+| Index target | Stable rollover alias |
+| Lifecycle owner | Elasticsearch ILM |
+| Deployment | Docker Compose |
+| Runtime | Air-gapped / offline-capable |
+
+---
+
+## 🧠 Responsibility Boundary
+
+Logstash owns **transport between Kafka and Elasticsearch plus pipeline-level event processing**.
+
+```text
+Kafka
+  │
+  ▼
+🚚 Logstash
+  │
+  ├── consume
+  ├── authenticate
+  ├── decode JSON
+  ├── apply pipeline processing
+  └── write to stable alias
+              │
+              ▼
+       🔎 Elasticsearch
+```
+
+Elasticsearch owns physical index generations and lifecycle. Logstash therefore does not need to construct daily index names or manage rollover state.
 
 ---
 
 ## 🔐 Security Model
 
-### Kafka authentication
-
-The Kafka input uses **SASL/PLAIN** authentication:
+### Kafka
 
 ```text
 Logstash
-   │
    │ username + password
    │ SASL/PLAIN
    ▼
-Kafka Broker Listener
+Kafka listener
+   │
+   ▼
+ACL authorization
 ```
 
-The credentials are supplied through the environment file and are **not embedded in the pipeline configuration**.
+`SASL_PLAINTEXT` authenticates the client but does not encrypt traffic. Use a TLS-enabled Kafka listener when confidentiality is required.
 
-> `SASL_PLAINTEXT` provides authentication but does not encrypt Kafka traffic. Use `SASL_SSL` when transport confidentiality is required by the deployment.
-
-### Elasticsearch transport
-
-The Elasticsearch output connects over HTTPS and validates the server certificate against the mounted CA:
+### Elasticsearch
 
 ```text
 Logstash
    │
-   │ HTTPS
-   │ CA validation
+   │ HTTPS + CA validation
    ▼
-Elasticsearch
+Elasticsearch HTTP API
 ```
+
+Credentials and certificate material are supplied through the local deployment environment.
 
 ---
 
 ## 🧱 Pipeline Isolation
 
-The central design principle is simple:
-
 ```text
 logstash/config/pipelines.yml
               │
-              ├───────────────┐
-              │               │
-              ▼               ▼
-     pipeline A.conf      pipeline B.conf
-              │               │
-              ▼               ▼
-       dedicated mount    dedicated mount
+       ┌──────┴──────┐
+       ▼             ▼
+ pipeline A       pipeline B
+    .conf            .conf
+       │             │
+       └──────┬──────┘
+              ▼
+          Logstash
 ```
 
-The current enabled pipeline is:
+The current Kafka → Elasticsearch path is explicitly registered in `pipelines.yml`. A new logical data path can be introduced as a separate pipeline rather than expanding one monolithic configuration.
 
-```text
-pipeline.id: demo-kafka-to-elasticsearch
-path.config: /usr/share/logstash/pipeline/demo-kafka-to-elasticsearch.conf
-```
+### Why isolate pipelines?
 
-Adding another data path does not require merging unrelated logic into one large configuration. Create a separate `.conf`, add its own `pipeline.id`, and explicitly mount it.
+- configuration ownership stays clear;
+- troubleshooting is localized;
+- unrelated changes have a smaller blast radius;
+- each pipeline can be mounted explicitly.
 
 ---
 
-## 📦 Repository Layout
+## 📁 Repository Layout
 
 ```text
 logstash/
+├── README.md
 ├── config/
 │   ├── logstash.yml
 │   └── pipelines.yml
-│
 ├── pipeline/
 │   ├── demo-kafka-to-elasticsearch.conf
-│   └── beats-to-kafka.conf
-│
+│   └── kafka-to-elasticsearch.conf
 ├── docker-compose.logstash01.yml
-├── docker-compose.logstash02.yml
-└── README.md
+└── docker-compose.logstash02.yml
 ```
 
-Environment-specific values are kept outside the pipeline files:
-
-```text
-env/logstash.env.example
-        │
-        └── copied locally to env/logstash.env
-```
+Environment-specific credentials and endpoints live in `env/logstash.env` locally and are represented publicly by `env/logstash.env.example`.
 
 ---
 
 ## ⚙️ Current Pipeline
 
-### Input — Kafka
-
-The pipeline consumes JSON events from the Kafka cluster using:
-
-- configurable bootstrap servers
-- configurable topic list
-- shared consumer group
-- configurable consumer threads
-- SASL/PLAIN authentication
-- JSON codec
-
-### Filter
-
-A small metadata marker identifies Kafka as the event source:
-
 ```text
-[@metadata][source] = kafka
+Kafka topic
+    │
+    ▼
+Kafka input
+    │
+    ▼
+JSON codec
+    │
+    ▼
+Small metadata enrichment
+    │
+    ▼
+Elasticsearch output
+    │
+    ▼
+demo-logs alias
 ```
 
-### Output — Elasticsearch
-
-Events are written to the stable rollover alias:
-
-```text
-demo-logs
-```
-
-The Elasticsearch output uses:
-
-- username/password authentication
-- HTTPS
-- mounted CA certificate
-- configurable certificate verification mode
-- rollover alias instead of a daily index name
-
-This keeps Logstash independent from the physical backing-index names created by ILM.
+The Elasticsearch output uses the stable rollover alias. ILM remains an Elasticsearch concern.
 
 ---
 
 ## 🚀 Deployment
 
-### 1. Prepare environment values
+### 1. Prepare local environment values
 
 ```bash
 cp env/logstash.env.example env/logstash.env
 ```
 
-Set the local Kafka and Elasticsearch credentials in the ignored environment file.
+Replace placeholders locally and keep the resulting file outside Git.
 
-### 2. Start Logstash 01
+### 2. Start Logstash instances
 
 ```bash
-cd logstash
 docker compose -f docker-compose.logstash01.yml up -d
-docker logs -f logstash01
-```
-
-### 3. Start Logstash 02
-
-```bash
 docker compose -f docker-compose.logstash02.yml up -d
-docker logs -f logstash02
 ```
 
-Both instances use the same consumer group, allowing Kafka to distribute partitions between them.
+The instances use the same Kafka consumer group so Kafka can distribute partitions between them.
 
 ---
 
@@ -219,25 +211,19 @@ Check the Logstash monitoring API:
 curl http://127.0.0.1:9600/_node/pipelines?pretty
 ```
 
-The expected pipeline should include:
-
-```text
-demo-kafka-to-elasticsearch
-```
-
-Check the container configuration:
+Inspect loaded pipeline configuration:
 
 ```bash
 docker exec logstash01 ls -l /usr/share/logstash/pipeline/
 ```
 
-Verify Kafka authentication failures in logs:
+Check Kafka-related failures:
 
 ```bash
 docker logs logstash01 2>&1 | grep -Ei 'sasl|authentication|kafka'
 ```
 
-Verify Elasticsearch connectivity:
+Check Elasticsearch/TLS failures:
 
 ```bash
 docker logs logstash01 2>&1 | grep -Ei 'elasticsearch|ssl|certificate'
@@ -245,73 +231,82 @@ docker logs logstash01 2>&1 | grep -Ei 'elasticsearch|ssl|certificate'
 
 ---
 
-## 🛠️ Troubleshooting Flow
+## 🧯 Troubleshooting Flow
 
 ```text
-                    Logstash not ingesting?
-                              │
-                              ▼
-                    Pipeline loaded by LS?
-                         │          │
-                        NO         YES
-                         │          │
-                         ▼          ▼
-                 Check pipelines.yml   Kafka auth?
-                                      │      │
-                                     NO     YES
-                                      │      │
-                                      ▼      ▼
-                               Check SASL env   Kafka topic/group
-                                             │
-                                             ▼
-                                      Elasticsearch output?
-                                             │
-                                             ▼
-                                       HTTPS / CA valid?
-                                             │
-                                             ▼
-                                      Alias + ILM healthy?
+No documents?
+      │
+      ▼
+Pipeline loaded?
+      │
+      ▼
+Kafka authentication?
+      │
+      ▼
+Topic / consumer group receiving?
+      │
+      ▼
+Elasticsearch HTTPS reachable?
+      │
+      ▼
+CA / credentials valid?
+      │
+      ▼
+Alias exists and is writable?
+      │
+      ▼
+ILM progressing?
 ```
 
-For ILM-specific problems, see the Elasticsearch lifecycle documentation in the repository.
+The order intentionally moves from pipeline loading to transport, authentication, consumption, storage, and lifecycle.
 
 ---
 
 ## 🧠 Operational Decisions
 
-| Decision | Implementation |
+| Decision | Why |
 |---|---|
-| Pipeline isolation | Separate `.conf` per logical data path |
-| Pipeline registration | Explicit `pipelines.yml` entries |
-| Container mounting | Explicit read-only configuration mounts |
-| Kafka authentication | SASL/PLAIN |
-| Kafka consumer scaling | Shared consumer group across Logstash nodes |
-| Elasticsearch security | HTTPS + CA validation |
-| Index target | Stable rollover alias |
-| Configuration secrets | Environment file, excluded from Git |
-| Deployment model | Separate Compose file per Logstash host |
+| Isolated pipelines | Reduce configuration blast radius |
+| Explicit `pipelines.yml` | Make active pipelines obvious |
+| Shared consumer group | Distribute Kafka partitions across Logstash instances |
+| SASL/PLAIN | Match the implemented Kafka authentication model |
+| HTTPS to Elasticsearch | Protect Logstash → Elasticsearch traffic |
+| Stable alias | Hide physical backing-index names |
+| ES-side ILM | Keep lifecycle ownership with Elasticsearch |
+| Compose per host | Match distributed air-gapped deployment |
+
+---
+
+## 🧪 Practical Failure Story
+
+When Logstash appears healthy but Elasticsearch contains no new documents, do not immediately change the output configuration.
+
+```text
+Logstash running
+      │
+      ├── Is the pipeline loaded?
+      ├── Is Kafka authentication successful?
+      ├── Are partitions assigned to the group?
+      ├── Are offsets advancing?
+      ├── Is Elasticsearch reachable over HTTPS?
+      ├── Is the alias valid?
+      └── Is ILM state healthy?
+```
+
+This separates a consumer problem from an Elasticsearch indexing or lifecycle problem.
 
 ---
 
 ## 🔒 Portfolio Safety
 
-All infrastructure values in this repository are intentionally fictional:
-
-- documentation-only IP addresses
-- fictional topic names
-- fictional aliases
-- placeholder credentials
-- no production registry names
-- no production usernames or passwords
-
-The repository demonstrates the architecture without exposing environment-specific data.
+Public examples use fictional topics, aliases, addresses, usernames, and placeholders. No production credentials, private keys, registry names, or environment-specific identifiers belong in Git.
 
 ---
 
 <div align="center">
 
-### Kafka authentication → isolated Logstash pipelines → HTTPS Elasticsearch → ILM-managed storage
+### 📨 Kafka → 🚚 Logstash → 🔎 Elasticsearch
 
-**Small configuration units. Clear ownership. Predictable operations.**
+**Isolated. Authenticated. Predictable. Operationally explainable.**
 
 </div>
